@@ -1,5 +1,47 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Button from "react-bootstrap/Button";
+import Alert from "react-bootstrap/Alert";
+import Form from "react-bootstrap/Form";
+
 function Homepage() {
-  return <h1>Server Browswer and title Screen</h1>;
+  const navigate = useNavigate();
+  const [name, setName] = useState("");
+  const [showAlert, setShowAlert] = useState(false);
+
+  const handleJoin = () => {
+    if (name == "") {
+      setShowAlert(true);
+    } else {
+      navigate("/browse");
+    }
+  };
+
+  const handleHost = () => {
+    if (name == "") {
+      setShowAlert(true);
+    } else {
+      navigate("/play");
+    }
+  };
+
+  return (
+    <>
+      <h1>Fight Spare Flee</h1>
+      <br />
+      <Form.Group className="name-input-group">
+        {showAlert && <Alert variant="danger">Enter a name</Alert>}
+        <Form.Control size="lg" type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+      </Form.Group>
+      <br />
+      <Button variant="primary" className="me-2" size="lg" onClick={handleJoin}>
+        Join
+      </Button>
+      <Button variant="primary" size="lg" onClick={handleHost}>
+        Host
+      </Button>
+    </>
+  );
 }
 
 export default Homepage;
