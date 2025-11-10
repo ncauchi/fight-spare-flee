@@ -38,9 +38,7 @@ class Room:
         return False
 
 # In-memory storage for rooms
-dev_room = Room("dev_room", "noah")
-rooms = {str(dev_room.id) : dev_room}
-print(rooms)
+rooms = {"DEV": Room("dev_room", "noah")}
 
 @app.route("/rooms", methods=["GET"])
 def get_rooms():
