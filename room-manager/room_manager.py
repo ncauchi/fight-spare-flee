@@ -8,7 +8,7 @@ CORS(app)
 
 class Room:
     def __init__(self, name, owner, max_players=4):
-        self.id = uuid.uuid4()
+        self.id = str(uuid.uuid4())
         self.name = name
         self.owner = owner
         self.players = [owner]
@@ -38,7 +38,9 @@ class Room:
         return False
 
 # In-memory storage for rooms
-rooms = {"DEV": Room("dev_room", "noah")}
+dev_room = Room("dev_room", "god")
+rooms = {dev_room.id: dev_room}
+
 
 @app.route("/rooms", methods=["GET"])
 def get_rooms():
