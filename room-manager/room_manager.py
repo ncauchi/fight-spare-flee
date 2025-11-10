@@ -39,7 +39,6 @@ class Room:
 
 # In-memory storage for rooms
 rooms = {"DEV": Room("dev_room", "noah")}
-print(rooms["DEV"].to_dict())
 
 @app.route("/rooms", methods=["GET"])
 def get_rooms():
