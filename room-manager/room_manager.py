@@ -38,8 +38,9 @@ class Room:
         return False
 
 # In-memory storage for rooms
-rooms = {"DEV": Room("dev_room", "noah")}
-print(rooms["DEV"].to_dict())
+dev_room = Room("dev_room", "noah")
+rooms = {str(dev_room.id) : dev_room}
+print(rooms)
 
 @app.route("/rooms", methods=["GET"])
 def get_rooms():
@@ -84,7 +85,7 @@ def join_room(room_id):
     room = rooms.get(room_id)
 
     if not room:
-        return jsonify({"error": "Room not found"}), 404
+        return jsonify({"error": f"Room {room_id} not found"}), 404
 
     data = request.get_json()
     if not data or "playerName" not in data:

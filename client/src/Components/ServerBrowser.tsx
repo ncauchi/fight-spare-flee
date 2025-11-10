@@ -3,26 +3,41 @@ import { useState, useEffect } from "react";
 import Button from "react-bootstrap/Button";
 import Stack from "react-bootstrap/Stack";
 import Spinner from "react-bootstrap/Spinner";
+import { usePlayerName } from "./NameContext";
+
+interface Room {
+  id: string;
+  name: string;
+  owner: string;
+  players: string[];
+  maxPlayers: number;
+}
 
 function ServerBrowser() {
   const navigate = useNavigate();
-
-  interface Room {
-    id: string;
-    name: string;
-    owner: string;
-    players: string[];
-    maxPlayers: number;
-  }
+  const playerName = usePlayerName();
 
   const roomsAPI = "http://localhost:5000/rooms";
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const handleJoinRoom = (roomId: string) => {
-    console.log(roomId);
-    // TODO: Implement join room logic
-    navigate("/play");
+  const handleJoinRoom = async (roomId: string) => {
+    const response = await fetch(`http://localhost:5000/rooms/${roomId}/join`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ playerName: playerName }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error("Failed to join room:", error);
+      alert(`Failed to join room: ${error.error || response.statusText}`);
+      return;
+    }
+
+    navigate(`/lobby/${roomId}`);
   };
 
   const handleBack = () => {

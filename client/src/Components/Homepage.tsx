@@ -3,10 +3,12 @@ import { useNavigate } from "react-router-dom";
 import Button from "react-bootstrap/Button";
 import Alert from "react-bootstrap/Alert";
 import Form from "react-bootstrap/Form";
+import { useSetPlayerName, usePlayerName } from "./NameContext";
 
 function Homepage() {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const name = usePlayerName();
+  const setPlayerName = useSetPlayerName();
   const [showAlert, setShowAlert] = useState(false);
 
   const handleJoin = () => {
@@ -31,7 +33,13 @@ function Homepage() {
       <br />
       <Form.Group className="name-input-group">
         {showAlert && <Alert variant="danger">Enter a name</Alert>}
-        <Form.Control size="lg" type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+        <Form.Control
+          size="lg"
+          type="text"
+          placeholder="Name"
+          value={name}
+          onChange={(e) => setPlayerName(e.target.value)}
+        />
       </Form.Group>
       <br />
       <Button variant="primary" className="me-2" size="lg" onClick={handleJoin}>
