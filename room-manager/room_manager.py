@@ -65,7 +65,7 @@ def create_room():
 
     rooms[room.id] = room
 
-    return jsonify(room.to_dict()), 201
+    return jsonify({"id": room.id}), 201
 
 
 @app.route("/rooms/<room_id>", methods=["GET"])

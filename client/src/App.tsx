@@ -4,6 +4,7 @@ import Homepage from "./Components/Homepage";
 import Game from "./Components/Game";
 import ServerBrowser from "./Components/ServerBrowser";
 import Lobby from "./Components/Lobby";
+import CreateRoom from "./Components/CreateRoom";
 import { NameProvider } from "./Components/NameContext";
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
           <Route path="/browse" element={<ServerBrowser />} />
           <Route path="/play" element={<Game />} />
           <Route path="/lobby/:roomId" element={<Lobby />} />
+          <Route path="/create" element={<CreateRoom />} />
         </Routes>
       </HashRouter>
     </NameProvider>

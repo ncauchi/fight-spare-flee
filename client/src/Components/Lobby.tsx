@@ -43,6 +43,7 @@ function Lobby() {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
+      console.log(`Loaded room: ${room}`);
     }
   };
 
@@ -109,7 +110,7 @@ function Lobby() {
       <h3 className="mt-4">Players</h3>
       <ListGroup>
         {room.players.map((player) => (
-          <ListGroup.Item>
+          <ListGroup.Item key={player}>
             {player} {player === room.owner && "(Owner)"}
           </ListGroup.Item>
         ))}

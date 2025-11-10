@@ -1,6 +1,6 @@
 import { type ReactNode, createContext, useState, useContext } from "react";
 
-const NameContext = createContext("");
+const NameContext = createContext("uninitialized");
 const NameUpdateContext = createContext((_: string) => {});
 
 interface Props {

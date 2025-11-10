@@ -23,7 +23,7 @@ function Homepage() {
     if (name == "") {
       setShowAlert(true);
     } else {
-      navigate("/play");
+      navigate("/create");
     }
   };
 
