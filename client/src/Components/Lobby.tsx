@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router";
 import Button from "react-bootstrap/Button";
 import Stack from "react-bootstrap/Stack";
@@ -7,23 +7,203 @@ import Spinner from "react-bootstrap/Spinner";
 import ListGroup from "react-bootstrap/ListGroup";
 import { usePlayerName } from "./NameContext";
 
-interface Room {
-  id: string;
-  name: string;
-  owner: string;
-  players: string[];
-  maxPlayers: number;
+//const GAME_API = `http://localhost:5001`;
+
+interface Message {
+  player: string;
+  text: string;
 }
 
 function Lobby() {
+  let { gameId } = useParams();
+
+  const socketRef = useRef<WebSocket>(null);
+  const playerName = usePlayerName();
+  const [messages, setMessages] = useState<Message[]>([]);
+
+  const handleChat = (player: string, msg: string) => {
+    setMessages((prev) => [...prev, { player: player, text: msg }]);
+  };
+
+  const handleSendChat = (msg: string) => {
+    socketRef.current?.send(JSON.stringify({ type: "CHAT", player: playerName, message: msg }));
+  };
+
+  useEffect(() => {
+    const socket = new WebSocket(`ws://localhost:5001/ws/${gameId}/${playerName}`);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      console.log("Successfully Joined Game: ", gameId);
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type == "CHAT") {
+        handleChat(data.player, data.message);
+      } else if (data.type == "ERROR") {
+        console.error("Server error:", data.message);
+        alert(`Connection error: ${data.message}`);
+      } else {
+        console.log("Message from server", data.type, data.message);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    socket.onclose = (event) => {
+      console.log("WebSocket closed:", event.code, event.reason);
+    };
+
+    // Cleanup function to close socket when component unmounts
+    return () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [gameId, playerName]);
+
+  return (
+    <>
+      <h1>Hellow World!</h1>
+      <ListGroup>
+        {messages.map((message, index) => (
+          <ListGroup.Item key={index}>
+            {message.player}: {message.text}
+          </ListGroup.Item>
+        ))}
+      </ListGroup>
+      <Button variant="primary" className="me-2" size="lg" onClick={() => handleSendChat("Hello")}>
+        Send
+      </Button>
+    </>
+  );
+
+  /*export function useGameSocket(gameId, playerName) {
+  
+  
+  const socketRef = useRef(null);
+  const [connected, setConnected] = useState(false);
+  const [gameState, setGameState] = useState(null);
+  const [playerId, setPlayerId] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // Create socket connection
+    socketRef.current = io(SOCKET_URL, {
+      transports: ['websocket', 'polling']
+    });
+
+    const socket = socketRef.current;
+
+    // Connection events
+    socket.on('connect', () => {
+      console.log('Connected to server');
+      setConnected(true);
+      
+      // Join game after connection
+      if (gameId && playerName) {
+        socket.emit('join_game', { gameId, playerName });
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from server');
+      setConnected(false);
+    });
+
+    socket.on('connected', (data) => {
+      setPlayerId(data.clientId);
+    });
+
+    // Game events
+    socket.on('game_joined', (data) => {
+      console.log('Joined game:', data);
+      setPlayerId(data.playerId);
+      setGameState(data.gameState);
+    });
+
+    socket.on('join_error', (data) => {
+      console.error('Join error:', data.message);
+      setError(data.message);
+    });
+
+    socket.on('player_joined', (data) => {
+      console.log('Player joined:', data);
+      setGameState(data.gameState);
+    });
+
+    socket.on('player_left', (data) => {
+      console.log('Player left:', data);
+      setGameState(data.gameState);
+    });
+
+    socket.on('player_ready_update', (data) => {
+      console.log('Player ready update:', data);
+      setGameState(data.gameState);
+    });
+
+    socket.on('game_started', (data) => {
+      console.log('Game started!');
+      setGameState(data.gameState);
+    });
+
+    socket.on('game_update', (data) => {
+      console.log('Game update:', data);
+      setGameState(data.gameState);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      if (socket.connected) {
+        socket.emit('leave_game', { gameId });
+        socket.disconnect();
+      }
+    };
+  }, [gameId, playerName]);
+
+  // Actions
+  const sendAction = (action) => {
+    if (socketRef.current && connected) {
+      socketRef.current.emit('game_action', { gameId, action });
+    }
+  };
+
+  const setReady = () => {
+    if (socketRef.current && connected) {
+      socketRef.current.emit('player_ready', { gameId });
+    }
+  };
+
+  const leaveGame = () => {
+    if (socketRef.current && connected) {
+      socketRef.current.emit('leave_game', { gameId });
+    }
+  };
+
+  return {
+    connected,
+    gameState,
+    playerId,
+    error,
+    sendAction,
+    setReady,
+    leaveGame
+  };
+}
+
+
   const playerName = usePlayerName();
   const navigate = useNavigate();
-  let { roomId } = useParams();
+  let { gameId } = useParams();
   const [room, setRoom] = useState<Room | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const roomAPI = `http://localhost:5000/rooms/${roomId}`;
+  const roomAPI = `http://localhost:5000/rooms/${gameId}`;
 
   const fetchRoom = async () => {
     setLoading(true);
@@ -49,10 +229,10 @@ function Lobby() {
 
   useEffect(() => {
     fetchRoom();
-  }, [roomId]);
+  }, [gameId]);
 
   const handleLeave = async () => {
-    const response = await fetch(`http://localhost:5000/rooms/${roomId}/leave`, {
+    const response = await fetch(`http://localhost:5000/rooms/${gameId}/leave`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -105,7 +285,7 @@ function Lobby() {
   return (
     <>
       <h1>{room.name}</h1>
-      <p>Room ID: {roomId}</p>
+      <p>Room ID: {gameId}</p>
 
       <h3 className="mt-4">Players</h3>
       <ListGroup>
@@ -130,7 +310,7 @@ function Lobby() {
         </Button>
       </Stack>
     </>
-  );
+  );*/
 }
 
 export default Lobby;

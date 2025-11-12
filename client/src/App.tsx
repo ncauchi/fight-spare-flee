@@ -14,8 +14,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Homepage />} />
           <Route path="/browse" element={<ServerBrowser />} />
-          <Route path="/play" element={<Game />} />
-          <Route path="/lobby/:roomId" element={<Lobby />} />
+          <Route path="/play:gameId" element={<Game />} />
+          <Route path="/lobby/:gameId" element={<Lobby />} />
           <Route path="/create" element={<CreateRoom />} />
         </Routes>
       </HashRouter>

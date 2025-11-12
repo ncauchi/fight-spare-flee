@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 function CreateRoom() {
   const playerName = usePlayerName();
   const [lobbyName, setLobbyName] = useState("");
+  const [isLoading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleCreate = async () => {
@@ -15,8 +16,8 @@ function CreateRoom() {
       alert("Please enter a name");
       return;
     }
-
-    const response = await fetch(`http://localhost:5000/rooms`, {
+    setLoading(true);
+    const response = await fetch(`http://localhost:5000/games`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -26,12 +27,13 @@ function CreateRoom() {
 
     if (!response.ok) {
       const error = await response.json();
-      console.error("Failed to create room:", error);
-      alert(`Failed to create room: ${error.error || response.statusText}`);
+      console.error("Failed to create game:", error);
+      alert(`Failed to create game: ${error.error || response.statusText}`);
+      setLoading(false);
       return;
     }
     const data: { id: string } = await response.json();
-    console.log(data);
+    console.log("created game: " + data);
     navigate(`/lobby/${data.id}`);
   };
 
@@ -41,7 +43,7 @@ function CreateRoom() {
 
   return (
     <>
-      <h1>Create Room</h1>
+      <h1>Create Game</h1>
       <Form.Group className="name-input-group">
         <Form.Control
           size="lg"
@@ -55,8 +57,8 @@ function CreateRoom() {
         <Button className="m-auto" onClick={handleBack} variant="secondary">
           Back
         </Button>
-        <Button className="m-auto" onClick={handleCreate} variant="success">
-          Start Game
+        <Button className="m-auto" onClick={isLoading ? () => {} : handleCreate} disabled={isLoading} variant="success">
+          {isLoading ? "Starting..." : "Start Game"}
         </Button>
       </Stack>
     </>
