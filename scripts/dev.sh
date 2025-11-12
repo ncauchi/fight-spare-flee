@@ -77,12 +77,12 @@ echo -e "${GREEN}================================${NC}\n"
 
 # Start Lobby Service
 start_service "Lobby Service" "$LOBBY_SERVICE_DIR" \
-    "python room_manager.py" "$CYAN" "Lobby"
+    "python -u room_manager.py" "$CYAN" "Lobby"
 echo -e "${GREEN}✓ Lobby Service running on http://localhost:${LOBBY_PORT}${NC}\n"
 
 # Start Game Service
 start_service "Game Service" "$GAME_SERVICE_DIR" \
-    "python game_manager.py" "$BLUE" "Game"
+    "python -u game_manager.py" "$BLUE" "Game"
 echo -e "${GREEN}✓ Game Service running on http://localhost:${GAME_PORT}${NC}\n"
 
 # Start Frontend(s)

@@ -36,7 +36,7 @@ def websocket(ws : Server, game_id: str, player_name: str):
         games[game_id].players[player_name] = ws
     
     if player_repeat_join:
-        print(f"Player {player_name} rejoining game {game_id}")
+        print("Player: ", player_name, " rejoining game.")
     else:
         print("Player: ", player_name, " joined game ", game_id)
         broadcast(game_id, {"type": "CHAT", "player": "Server", "message": f"{player_name} has joined."})

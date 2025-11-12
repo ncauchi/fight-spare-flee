@@ -11,16 +11,8 @@ pip install -r requirements.txt
 npm i
 ```
 
-2. start backend
+2. start
 
 ```bash
-cd room-manager
-python room_manager.py
-```
-
-3. start frontend
-
-```bash
-cd client
-npm run dev
+sh scripts/dev.sh --clients 1
 ```
