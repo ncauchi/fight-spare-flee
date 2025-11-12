@@ -26,24 +26,21 @@ def websocket(ws : Server, game_id: str, player_name: str):
         ws.send(json.dumps({"type": "ERROR", "message": "Game does not exist."}))
         return
 
-    # Get or create lock for this game
     if game_id not in game_locks:
-        with games_lock:
-            if game_id not in game_locks:
-                game_locks[game_id] = threading.Lock()
-
+        print("Game lock issue")
     game_lock = game_locks[game_id]
 
-    # Thread-safe player connection handling
+    player_repeat_join = True if player_name in games[game_id].players else False
+
     with game_lock:
-        # If player is already connected, close the old connection and replace it
-        if player_name in games[game_id].players:
-            print(f"Player {player_name} rejoining game {game_id}")
-
         games[game_id].players[player_name] = ws
+    
+    if player_repeat_join:
+        print(f"Player {player_name} rejoining game {game_id}")
+    else:
         print("Player: ", player_name, " joined game ", game_id)
+        broadcast(game_id, {"type": "CHAT", "player": "Server", "message": f"{player_name} has joined."})
 
-    broadcast(game_id, {"type": "CHAT", "player": "Server", "message": f"{player_name} has joined."})
 
     try:
         while True:
