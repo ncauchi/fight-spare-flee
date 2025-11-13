@@ -1,10 +1,9 @@
 from multiprocessing import Process, Queue, Manager
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_sock import Sock, Server
+from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 from gamestate import GameState
 import json
-import requests
 import threading
 
 
@@ -13,52 +12,68 @@ CORS(app)
 #manager = Manager()
 #active_games = manager.dict()
 
-sock = Sock(app)
-connections = {}
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+connections : dict[str, (str, str)]= {}
 games : dict[str, GameState] = {}
 game_locks : dict[str, threading.Lock] = {} 
 games_lock = threading.Lock()
 
-@sock.route('/ws/<game_id>/<player_name>')
-def websocket(ws : Server, game_id: str, player_name: str):
+@socketio.on('connect')
+def test_connect(auth):
+    print("Client connected.")
 
-    if game_id not in games:
-        ws.send(json.dumps({"type": "ERROR", "message": "Game does not exist."}))
-        return
+@socketio.on('disconnect')
+def test_disconnect():
+    sid = request.sid
+    if sid in connections:
+        player_name, game_id = connections[sid]
 
-    if game_id not in game_locks:
-        print("Game lock issue")
-    game_lock = game_locks[game_id]
+        # Clean up connections
+        del connections[sid]
 
-    player_repeat_join = True if player_name in games[game_id].players else False
+        # Clean up game state if game exists
+        if game_id in games and game_id in game_locks:
+            with game_locks[game_id]:
+                game = games[game_id]
+                if player_name in game.players and game.players[player_name] == sid:
+                    del game.players[player_name]
+                    print(f"Player {player_name} disconnected from game {game_id}")
 
-    with game_lock:
-        games[game_id].players[player_name] = ws
-    
-    if player_repeat_join:
-        print("Player: ", player_name, " rejoining game.")
+        # Leave the room
+        leave_room(game_id)
     else:
-        print("Player: ", player_name, " joined game ", game_id)
-        broadcast(game_id, {"type": "CHAT", "player": "Server", "message": f"{player_name} has joined."})
+        print(f"Client {sid} disconnected (not in a game)")
 
+@socketio.event
+def JOIN(game_id: str, player_name: str):
+    sid = request.sid
+    lock = game_locks[game_id]
+    game = games[game_id]
+    new_join = True
+    with lock:
+        if player_name in game.players:
+            old_sid = game.players[player_name]
+            #disconnect(sid = old_sid)
+            del connections[old_sid]
+            new_join = False
+        
+        connections[sid] = (player_name, game_id)
+        game.players[player_name] = sid
 
-    try:
-        while True:
-            message = ws.receive()
+    if new_join:
+        print("Player: ",player_name, " joined game: ", game_id)
+    else:
+        print("Player: ",player_name, " rejoined game: ", game_id)
+    
+    join_room(game_id)
+    
 
-            data = json.loads(message)
-
-            if data["type"] == "CHAT":
-                broadcast(game_id, {"type": "CHAT", "player": data["player"], "message": data["message"]})
-    finally:
-        # Thread-safe player disconnection handling
-        with game_lock:
-            game = games[game_id]
-            if player_name in game.players:
-                del game.players[player_name]
-                print(f"Player {player_name} disconnected from game {game_id}")
-
-        broadcast(game_id, {'type': 'CHAT', 'player': "Server", "message": f"{player_name} left."})
+@socketio.event
+def CHAT(player: str, text: str):
+    _, room = connections[request.sid]
+    print(player, text)
+    emit('CHAT', {'player': player, 'text': text}, to=room)
 
 
 @app.route("/internal", methods = ["POST"])
@@ -77,10 +92,8 @@ def create_process():
         game_locks[game_id] = threading.Lock()
 
     print("Created new game with id: ", new_game._id)
-    #tmp
-    new_game.ws = "LALALALA"
 
-    return jsonify({"ws": new_game.ws}), 201
+    return jsonify("response", "Sucess"), 201
 
 def broadcast(game_id : str, data : dict):
     if not game_id or game_id not in games:
@@ -103,4 +116,4 @@ def broadcast(game_id : str, data : dict):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5001)
+    socketio.run(app, debug=True, host="0.0.0.0", port=5001, allow_unsafe_werkzeug=True)

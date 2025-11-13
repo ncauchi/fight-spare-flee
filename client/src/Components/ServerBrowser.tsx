@@ -21,7 +21,7 @@ function ServerBrowser() {
   const [loading, setLoading] = useState(true);
 
   const handleJoinRoom = async (roomId: string) => {
-    navigate(`/lobby/${roomId}`);
+    navigate(`/play/${roomId}/lobby`);
   };
 
   const handleBack = () => {

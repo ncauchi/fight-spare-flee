@@ -1,5 +1,3 @@
-from flask_sock import Server
-
 class GameState:
     '''
     represents a class
@@ -8,7 +6,7 @@ class GameState:
     _name: str
     _owner: str
     _max_players: int
-    players: dict[str, Server]
+    players: dict[str, str] #player_name -> sid
 
 
     def __init__(self, id : str, name : str, owner : str, max_players: int):

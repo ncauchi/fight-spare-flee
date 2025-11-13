@@ -34,7 +34,7 @@ function CreateRoom() {
     }
     const data: { id: string } = await response.json();
     console.log("created game: " + data);
-    navigate(`/lobby/${data.id}`);
+    navigate(`/play/${data.id}/lobby`);
   };
 
   const handleBack = () => {
