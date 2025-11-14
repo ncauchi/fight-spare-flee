@@ -18,6 +18,7 @@ socketio = SocketIO(
 )
 
 ROOMS_API_URL = "http://localhost:5000"
+SERVER_NAME = "SERVER123"
 
 connections : dict[str, (str, str)] = {}
 games : dict[str, GameState] = {}
@@ -40,6 +41,7 @@ def JOIN(game_id: str, player_name: str):
     sid = request.sid
     lock = game_locks[game_id]
     game = games[game_id]
+    players_snapshot = []
     new_join = True
     with lock:
         if len(game.players) == game._max_players:
@@ -55,10 +57,13 @@ def JOIN(game_id: str, player_name: str):
         
         connections[sid] = (player_name, game_id)
         game.players[player_name] = sid
+        players_snapshot = game.players
 
     if new_join:
         print("Player: ",player_name, " joined game: ", game_id)
-        emit('CHAT', {'player': 'Server', 'text': f'{player_name} joined.'}, to=game_id)
+        socketio.emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
+        socketio.emit('PLAYERS', {'players': [{"name": player_name} for player_name in players_snapshot.keys()]}, include_self=False)
+        eventlet.spawn(notify_new_join, sid, game_id)
         eventlet.spawn(update_lobby_service, game_id)
     else:
         print("Player: ",player_name, " rejoined game: ", game_id)
@@ -69,13 +74,26 @@ def JOIN(game_id: str, player_name: str):
 @socketio.event
 def CHAT(player: str, text: str):
     _, room = connections[request.sid]
-    print(player, text)
     emit('CHAT', {'player': player, 'text': text}, to=room)
 
+def notify_new_join(sid, game_id):
+    eventlet.sleep(0.2)
+    with game_locks[game_id]:
+        game = games[game_id]
+        data = {
+            "game_name": game._name,
+            "game_owner": game._owner,
+            "max_players": game._max_players,
+            "players": [{"name": player_name} for player_name in game.players.keys()],
+            "messages": [{"player": SERVER_NAME, "text": "Welcome to the game"}],
+        }
+    socketio.emit("INIT", data, to=sid)
+    
 
 def cleanup_disconnect(sid):
     player_leave = False
     player_name, game_id = "LOCK_WARNING", "LOCK_WARNING"
+    players_snapshot = []
     
     with connections_lock:
         sid = request.sid
@@ -88,10 +106,12 @@ def cleanup_disconnect(sid):
                     game = games[game_id]
                     if player_name in game.players:
                         del game.players[player_name]
+                    players_snapshot = game.players
 
     if player_leave:
         update_lobby_service(game_id)
-        emit('CHAT', {'player': 'Server', 'text': f'{player_name} left.'}, to=game_id)
+        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} left.'}, to=game_id)
+        emit('PLAYERS', {'players': [player_name for player_name in players_snapshot.keys()]}, to=game_id)
         print("Player: ",player_name, " left game: ", game_id)
 
 @app.route("/internal/<game_id>", methods = ["POST"])
