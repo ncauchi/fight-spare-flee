@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
-from gamestate import GameState
+from gamestate import GameState, Player
 import threading
 import requests
 
@@ -20,7 +20,7 @@ socketio = SocketIO(
 ROOMS_API_URL = "http://localhost:5000"
 SERVER_NAME = "SERVER123"
 
-connections : dict[str, (str, str)] = {}
+connections : dict[str, (str, str)] = {} # player_name, game_id
 games : dict[str, GameState] = {}
 game_locks : dict[str, threading.Lock] = {}
 games_lock = threading.Lock()
@@ -56,19 +56,56 @@ def JOIN(game_id: str, player_name: str):
             new_join = False
         
         connections[sid] = (player_name, game_id)
-        game.players[player_name] = sid
+        game.players[player_name] = Player(name=player_name, sid=sid)
         players_snapshot = game.players
 
     if new_join:
         print("Player: ",player_name, " joined game: ", game_id)
-        socketio.emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
-        socketio.emit('PLAYERS', {'players': [{"name": player_name} for player_name in players_snapshot.keys()]}, include_self=False)
+        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
+        emit('PLAYERS', {'players': [{"name": player.name, "ready": player.lobby_ready} for player in players_snapshot.values()]}, to=game_id, include_self=False)
         eventlet.spawn(notify_new_join, sid, game_id)
         eventlet.spawn(update_lobby_service, game_id)
     else:
         print("Player: ",player_name, " rejoined game: ", game_id)
     
     join_room(game_id)
+
+@socketio.event
+def LOBBY_READY(ready: bool):
+    sid = request.sid
+    with connections_lock:
+        player_name, game_id = connections[sid]
+    
+    lock = game_locks[game_id]
+    with lock:
+        player = games[game_id].players[player_name]
+        player.lobby_ready = ready
+        players_snapshot = games[game_id].players
+    
+    emit('PLAYERS', {'players': [{"name": player.name, "ready": player.lobby_ready} for player in players_snapshot.values()]}, to=game_id)
+
+@socketio.event
+def START_GAME():
+    sid = request.sid
+    with connections_lock:
+        player_name, game_id = connections[sid]
+
+    with game_locks[game_id]:
+        game_snapshot = games[game_id]
+    
+    if game_snapshot._owner != player_name:
+        print(f'Player {player_name} tried to start game: {game_snapshot._name} but they are not the owner.')
+        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} tried to hack.'}, to=game_id, include_self=False)
+        return
+    
+    if not all([player.lobby_ready for player in game_snapshot.players.values()]):
+        print(f'Game: {game_snapshot._name} but not all players are ready.')
+        emit('CHAT', {'player': SERVER_NAME, 'text': f'Not all players are ready'}, broadcast=False)
+        return
+    
+    print(f'Game: {game_snapshot._name} starting.')
+    emit('CHAT', {'player': SERVER_NAME, 'text': f'Starting game...'}, to=game_id)
+    eventlet.spawn(start_game(game_id))
     
 
 @socketio.event
@@ -84,7 +121,7 @@ def notify_new_join(sid, game_id):
             "game_name": game._name,
             "game_owner": game._owner,
             "max_players": game._max_players,
-            "players": [{"name": player_name} for player_name in game.players.keys()],
+            "players": [{"name": player.name, "ready": player.lobby_ready} for player in game.players.values()],
             "messages": [{"player": SERVER_NAME, "text": "Welcome to the game"}],
         }
     socketio.emit("INIT", data, to=sid)
@@ -110,9 +147,17 @@ def cleanup_disconnect(sid):
 
     if player_leave:
         update_lobby_service(game_id)
-        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} left.'}, to=game_id)
-        emit('PLAYERS', {'players': [player_name for player_name in players_snapshot.keys()]}, to=game_id)
+        socketio.emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} left.'}, to=game_id)
+        socketio.emit('PLAYERS', {'players': [player_name for player_name in players_snapshot.keys()]}, to=game_id)
         print("Player: ",player_name, " left game: ", game_id)
+
+
+def start_game(game_id):
+    with game_locks[game_id]:
+        game = games[game_id]
+        game.start()
+    eventlet.sleep(0.1)
+    socketio.emit("START_GAME", to=game_id)
 
 @app.route("/internal/<game_id>", methods = ["POST"])
 def create_game(game_id):

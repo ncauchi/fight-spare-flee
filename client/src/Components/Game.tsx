@@ -1,7 +1,7 @@
-import { useParams, Outlet } from "react-router-dom";
+import { useParams, Outlet, useNavigate } from "react-router-dom";
 import { SocketProvider } from "./SocketContext";
 import { usePlayerName } from "./NameContext";
-import { useState, useMemo, createContext, useContext, useEffect } from "react";
+import { useState, useMemo, createContext, useContext } from "react";
 
 export interface Message {
   player: string;
@@ -10,6 +10,7 @@ export interface Message {
 
 export interface Player {
   name: string;
+  ready?: boolean;
 }
 
 export interface GameState {
@@ -44,6 +45,7 @@ function Game() {
   const { gameId } = useParams();
   const playerName = usePlayerName();
   const [gameState, setGameState] = useState<GameState | undefined>(undefined);
+  const navigate = useNavigate();
   /*
   useEffect(() => {
     const func = async () => {
@@ -80,6 +82,7 @@ function Game() {
   };
 
   const handlePlayersUpdate = (data: { players: Player[] }) => {
+    console.log("Recieved player updates from server", data);
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
@@ -101,6 +104,11 @@ function Game() {
     console.log("Retrieved game data from game service.");
   };
 
+  const handleStartGame = () => {
+    console.log("Starting Game...");
+    navigate(`/play/${gameId}/board`);
+  };
+
   const bindings = useMemo(
     () => [
       {
@@ -114,6 +122,10 @@ function Game() {
       {
         type: "INIT",
         func: handleInit,
+      },
+      {
+        type: "START_GAME",
+        func: handleStartGame,
       },
     ],
     []

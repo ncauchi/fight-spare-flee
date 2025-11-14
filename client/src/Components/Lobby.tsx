@@ -1,6 +1,6 @@
-import { Form, FormControl, Spinner, Stack, Button, ListGroup } from "react-bootstrap";
+import { Form, Spinner, Stack, Button, ListGroup } from "react-bootstrap";
 import { usePlayerName } from "./NameContext";
-import { useGameState, type GameState } from "./Game";
+import { useGameState, type Player } from "./Game";
 import { useSocketEmit } from "./SocketContext";
 import { useGameSocket } from "./SocketContext";
 import { useState, useEffect, useRef } from "react";
@@ -23,20 +23,33 @@ function Lobby() {
   };
 
   const handleReady = () => {
-    setReady(!ready);
+    const new_ready = !ready;
+    setReady(new_ready);
+    emit("LOBBY_READY", new_ready);
   };
 
-  const createPlayerBox = (idx: number) => {
+  const handleStartGame = () => {
+    emit("START_GAME");
+  };
+
+  const createPlayerBox = (player: Player) => {
     if (!gameState) {
       return <div />;
     }
-    const player = idx < gameState.players.length ? gameState.players[idx] : null;
+    return <PlayerBox player={player} />;
+  };
+
+  const createEmptyPlayerBox = (idx: number) => {
+    if (!gameState) {
+      return <div />;
+    }
     return (
-      <div key={idx} className="mb-2 lobby-player-box">
-        {<PlayerBox player={player} />}
+      <div key={idx} className="mb-2 lobby-player-box not-ready">
+        Empty
       </div>
     );
   };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [gameState?.messages]);
@@ -49,10 +62,16 @@ function Lobby() {
         <Stack>
           <h1 className="mb-2">{gameState.game_name}</h1>
           <p className="mb-4">Connected: {connected ? "Yes" : "No"}</p>
-          {[...Array(gameState.max_players).keys()].map(createPlayerBox)}
+          {gameState.players.map(createPlayerBox)}
+          {[...Array(gameState.max_players - gameState.players.length).keys()].map(createEmptyPlayerBox)}
           <Button variant={ready ? "warning" : "success"} onClick={handleReady} className="mt-2">
             {ready ? "Unready" : "Ready"}
           </Button>
+          {playerName == gameState.game_owner && gameState.players.every((p) => p.ready) && (
+            <Button variant="success" onClick={handleStartGame} className="mt-2">
+              Start Game
+            </Button>
+          )}
         </Stack>
         <Stack>
           <ListGroup className="overflow-y-auto overflow-x-hidden m-4 lobby-chat">

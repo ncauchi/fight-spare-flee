@@ -30,10 +30,17 @@
 
 .lobby-player-box {
   display: flex;
-  background-color: #454545;
   border-radius: 1rem;
   height: 5rem;
   width: 25rem;
   justify-content: center;
   align-items: center;
+
+  &.ready {
+    background-color: #19943e;
+  }
+
+  &.not-ready {
+    background-color: #454545;
+  }
 }
