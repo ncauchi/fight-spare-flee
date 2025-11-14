@@ -1,20 +1,15 @@
 import eventlet
 eventlet.monkey_patch()
 
-from multiprocessing import Process, Queue, Manager
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 from gamestate import GameState
-import json
 import threading
 import requests
 
-
 app = Flask(__name__)
 CORS(app)
-#manager = Manager()
-#active_games = manager.dict()
 
 socketio = SocketIO(
     app,
@@ -24,12 +19,11 @@ socketio = SocketIO(
 
 ROOMS_API_URL = "http://localhost:5000"
 
-connections : dict[str, (str, str)]= {}
+connections : dict[str, (str, str)] = {}
 games : dict[str, GameState] = {}
 game_locks : dict[str, threading.Lock] = {}
 games_lock = threading.Lock()
 connections_lock = threading.Lock()
-update_games_thread = None
 
 @socketio.on('connect')
 def test_connect(auth):
@@ -65,6 +59,7 @@ def JOIN(game_id: str, player_name: str):
     if new_join:
         print("Player: ",player_name, " joined game: ", game_id)
         emit('CHAT', {'player': 'Server', 'text': f'{player_name} joined.'}, to=game_id)
+        eventlet.spawn(update_lobby_service, game_id)
     else:
         print("Player: ",player_name, " rejoined game: ", game_id)
     
@@ -76,36 +71,6 @@ def CHAT(player: str, text: str):
     _, room = connections[request.sid]
     print(player, text)
     emit('CHAT', {'player': player, 'text': text}, to=room)
-
-
-def update_games():
-    print("Game Updates Start")
-    while True:
-
-        game_snapshots = []
-
-        with games_lock:
-            for id, game in games.items():
-                game_status = game.to_status()
-                game_snapshots.append((id, game_status))
-
-        def send_update(game_id, game_data):
-            print(game_data)
-            response = requests.put(
-                f"{ROOMS_API_URL}/games/{game_id}",
-                json=game_data,
-                headers={"Content-Type": "application/json"},
-                timeout=2
-            )
-            if response.status_code != 200:
-                print(f"Failed to update game {game_id}: {response.status_code}")
-
-        print("Updating games...")
-        for game_id, game_data in game_snapshots:
-            eventlet.spawn(send_update, game_id, game_data)
-
-        # Sleep for 5 seconds before next update (eventlet-aware sleep)
-        eventlet.sleep(5)
 
 
 def cleanup_disconnect(sid):
@@ -125,6 +90,7 @@ def cleanup_disconnect(sid):
                         del game.players[player_name]
 
     if player_leave:
+        update_lobby_service(game_id)
         emit('CHAT', {'player': 'Server', 'text': f'{player_name} left.'}, to=game_id)
         print("Player: ",player_name, " left game: ", game_id)
 
@@ -145,6 +111,26 @@ def create_game(game_id):
     print(f'"{new_game._owner}" created game: "{new_game._name}" with id: "{new_game._id}"')
     return jsonify("response", "Sucess"), 201
 
+def update_lobby_service(id):
+
+    if id not in game_locks or id not in games:
+        raise ValueError("Tried to send update to lobby for game that does not exist")
+
+    lock = game_locks[id]
+
+    with lock:
+        status = games[id].to_status()
+        name = games[id]._name
+    response = requests.put(
+            f"{ROOMS_API_URL}/games/{id}",
+            json=status,
+            headers={"Content-Type": "application/json"},
+        )
+    if response.status_code != 200:
+        print(f"Failed to update game {name}: {response.status_code}")
+    #else:
+        #print(f"Updated game: {name}")
+
 if __name__ == "__main__":
-    socketio.start_background_task(update_games)
-    socketio.run(app, debug=True,host="0.0.0.0", port=5001, use_reloader=False)
+    #socketio.start_background_task(poll_lobby_service)
+    socketio.run(app, debug=True, host="0.0.0.0", port=5001, use_reloader=False)
