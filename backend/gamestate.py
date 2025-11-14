@@ -1,3 +1,5 @@
+from typing import Literal
+
 class GameState:
     '''
     represents a class
@@ -7,6 +9,7 @@ class GameState:
     _owner: str
     _max_players: int
     players: dict[str, str] #player_name -> sid
+    status: Literal["in_lobby", "in_game", "ended"]
 
 
     def __init__(self, id : str, name : str, owner : str, max_players: int):
@@ -15,3 +18,10 @@ class GameState:
         self._owner = owner
         self._max_players = max_players
         self.players = {}
+        self.status = "in_lobby"
+
+    def to_status(self):
+        return {
+            "num_players": len(self.players),
+            "status": self.status
+        }

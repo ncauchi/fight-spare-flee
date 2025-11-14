@@ -22,8 +22,8 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    socketRef.current = io(SOCKET_URL, { transports: ["websocket", "polling"] });
-    const socket = socketRef.current;
+    const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+    socketRef.current = socket;
 
     bindings.forEach(({ type, func }) => {
       socket.on(type, func);
@@ -31,8 +31,8 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
 
     socket.on("connect", () => {
       console.log("Connected to server");
+      setConnected(true);
     });
-    setConnected(true);
 
     if (gameId && playerName) {
       socket.emit("JOIN", gameId, playerName);
@@ -51,10 +51,8 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
       socket.off("connect");
       socket.off("disconnect");
 
-      if (socket.connected) {
-        socket.emit("LEAVE", { game: gameId });
-        socket.disconnect();
-      }
+      // Disconnect the socket from this effect's closure
+      socket.disconnect();
     };
   }, []);
 

@@ -34,18 +34,18 @@ def create_lobby():
     game = GameMetadata( name=data["name"], owner=data["owner"], max_players=data.get("max_players", 4) )
     
     response = requests.post(
-        games_api_url+"/internal",
+        f'{games_api_url}/internal/{game.id}',
         json=game.to_setup(),
         headers={"Content-Type": "application/json"}
     )
 
-    if response.status_code != 201 or not response.json() or "ws" not in response.json():
+    if response.status_code != 201:
         return jsonify({"error": "Could not create game"}), 500
     
-    #game.ws = response.json()["ws"]
     games[game.id] = game
 
-    print("new game" + game.id)
+    print(f'New game: "{game.id}"')
+
     return jsonify({"id": game.id}), 201
 
 
@@ -65,22 +65,25 @@ def update_game(game_id):
     game = games.get(game_id)
 
     if not game:
-        return jsonify({"error": "game not found"}), 404
+        return jsonify({"error": "game not found"}),
     
     data = request.get_json()
-    if not data or "num_players" not in data or "stats" not in data:
+    if not data or "num_players" not in data or "status" not in data:
         return jsonify({"error": "missing required fields"})
 
-    game.num_players = data.num_players
-    game.status = data.status
+    game.num_players = data["num_players"]
+    game.status = data["status"]
 
-    if game.status == "ended" or game.num_players <= 0:
+    if game.status == "ended":
+        print(f'Deleting game: "{games[game.id].name}"')
         del games[game.id]
+    else:
+        print(f'Updated game: "{games[game.id].name}"')
 
-    return 200
+    return jsonify({"response": "ok"}), 200
 
 
-@app.route("/games/<game_id>/join", methods=["POST"])
+"""@app.route("/games/<game_id>/join", methods=["POST"])
 #TODO remove, move to WS, reimplement if auth needed
 def join_game(game_id):
     game = games.get(game_id)
@@ -97,7 +100,7 @@ def join_game(game_id):
     if not success:
         return jsonify({"error": message}), 400
 
-    return jsonify({"message": message, "game": game.to_dict()}), 200
+    return jsonify({"message": message, "game": game.to_dict()}), 200"""
 
 
 @app.route("/health", methods=["GET"])
@@ -107,19 +110,21 @@ def health_check():
 
 
 if __name__ == "__main__":
-    dev_game = GameMetadata("dev_game", "god")
+    dev_game = GameMetadata("dev_game", "God")
+    dev_game.id = "development"
     response = requests.post(
-        games_api_url+"/internal",
+        f'{games_api_url}/internal/{dev_game.id}',
         json=dev_game.to_setup(),
         headers={"Content-Type": "application/json"}
     )
 
-    if response.status_code != 201 or not response.json() or "ws" not in response.json():
-        print("Could not connect to game service.")
+    if response.status_code != 201:
+        print(f"Could not connect to game service: {response.json()}")
     else:
         print("Added dev game to game service")
+
     games[dev_game.id] = dev_game
 
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True,host="0.0.0.0", port=5000, use_reloader=False)
 
 

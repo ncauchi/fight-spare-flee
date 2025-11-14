@@ -37,7 +37,6 @@ class GameMetadata:
     
     def to_setup(self):
         return {
-            "id": self.id,
             "name": self.name,
             "owner": self.owner,
             "max_players": self.max_players,
