@@ -34,7 +34,7 @@ export const NameProvider = ({ children }: Props) => {
 export const usePlayerName = () => {
   const context = useContext(NameContext);
   if (!context) {
-    console.error("Session has no player name");
+    console.warn("Session has no player name");
   }
   return context;
 };

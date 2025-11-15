@@ -24,11 +24,11 @@ function Lobby() {
     emit("START_GAME");
   };
 
-  const createPlayerBox = (player: Player) => {
+  const createPlayerBox = (player: Player, idx: number) => {
     if (!gameState) {
       return <div />;
     }
-    return <PlayerBox player={player} />;
+    return <PlayerBox key={idx} player={player} />;
   };
 
   const createEmptyPlayerBox = (idx: number) => {

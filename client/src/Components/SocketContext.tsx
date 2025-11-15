@@ -38,7 +38,12 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
       console.log(`Requesting to joing game ${gameId}`);
       socket.emit("JOIN", gameId, playerName);
     } else {
-      console.error("Missing valid gameId or PlayerName in JOIN request");
+      if (!gameId) {
+        console.error("Missing valid gameId in JOIN request");
+      }
+      if (!playerName) {
+        console.error("Missing valid PlayerName in JOIN request");
+      }
     }
 
     socket.on("disconnect", () => {
@@ -57,7 +62,7 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
       // Disconnect the socket from this effect's closure
       socket.disconnect();
     };
-  }, []);
+  }, [playerName]);
 
   return <SocketContext.Provider value={{ socketRef, connected }}>{children}</SocketContext.Provider>;
 };
