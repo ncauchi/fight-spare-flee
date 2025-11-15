@@ -35,7 +35,10 @@ export const SocketProvider = ({ children, gameId, playerName, bindings }: Props
     });
 
     if (gameId && playerName) {
+      console.log(`Requesting to joing game ${gameId}`);
       socket.emit("JOIN", gameId, playerName);
+    } else {
+      console.error("Missing valid gameId or PlayerName in JOIN request");
     }
 
     socket.on("disconnect", () => {

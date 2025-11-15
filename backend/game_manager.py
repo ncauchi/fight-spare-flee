@@ -113,6 +113,7 @@ def CHAT(player: str, text: str):
     _, room = connections[request.sid]
     emit('CHAT', {'player': player, 'text': text}, to=room)
 
+
 def notify_new_join(sid, game_id):
     eventlet.sleep(0.2)
     with game_locks[game_id]:

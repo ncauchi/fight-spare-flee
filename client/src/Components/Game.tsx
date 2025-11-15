@@ -22,18 +22,6 @@ export interface GameState {
   connected: boolean;
 }
 
-const LOBBY_API = `http://localhost:5000`;
-/*
-  API RETURNS:
-  
-  "id": self.id,
-  "name": self.name,
-  "owner": self.owner,
-  "status": self.status,
-  "num_players": self.num_players,
-  "max_players": self.max_players,
-*/
-
 const GameStateContext = createContext<GameState | undefined>(undefined);
 
 export const useGameState = () => {
@@ -46,30 +34,7 @@ function Game() {
   const playerName = usePlayerName();
   const [gameState, setGameState] = useState<GameState | undefined>(undefined);
   const navigate = useNavigate();
-  /*
-  useEffect(() => {
-    const func = async () => {
-      const response = await fetch(`${LOBBY_API}/games/${gameId}`, {
-        method: "GET",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        console.error("Could not retrieve game data from lobby service.", data);
-      } else {
-        setGameState({
-          game_name: data.name,
-          game_owner: data.owner,
-          max_players: data.max_players,
-          players: [],
-          messages: [],
-          connected: false,
-        });
-        console.log("Retrieved game data from lobby service.");
-      }
-    };
-    func();
-  }, []);
-*/
+
   const handleChat = (data: Message) => {
     console.log("Recieved Message from server", data);
     setGameState((prevState) => {

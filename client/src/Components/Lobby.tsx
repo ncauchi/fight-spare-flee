@@ -58,10 +58,10 @@ function Lobby() {
 
   return (
     <>
+      <h1 className="mb-2">{gameState.game_name}</h1>
+      <p className="mb-4">Connected: {connected ? "Yes" : "No"}</p>
       <Stack direction="horizontal" gap={4}>
         <Stack>
-          <h1 className="mb-2">{gameState.game_name}</h1>
-          <p className="mb-4">Connected: {connected ? "Yes" : "No"}</p>
           {gameState.players.map(createPlayerBox)}
           {[...Array(gameState.max_players - gameState.players.length).keys()].map(createEmptyPlayerBox)}
           <Button variant={ready ? "warning" : "success"} onClick={handleReady} className="mt-2">
@@ -73,7 +73,7 @@ function Lobby() {
             </Button>
           )}
         </Stack>
-        <Stack>
+        <Stack className="m-auto">
           <ListGroup className="overflow-y-auto overflow-x-hidden m-4 lobby-chat">
             {gameState.messages.map((message, index) => (
               <ListGroup.Item key={index}>
