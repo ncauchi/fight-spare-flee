@@ -1,4 +1,5 @@
-import { type ReactNode, createContext, useState, useContext } from "react";
+import { type ReactNode, createContext, useState, useContext, useEffect } from "react";
+import { getCookie, addCookie } from "./CookieContext";
 
 const NameContext = createContext("uninitialized");
 const NameUpdateContext = createContext((_: string) => {});
@@ -10,8 +11,18 @@ export const NameProvider = ({ children }: Props) => {
   const [playerName, setPlayerNameState] = useState("");
 
   const setPlayerName = (name: string) => {
+    addCookie("playerName", name, 2);
     setPlayerNameState(name);
   };
+
+  useEffect(() => {
+    const savedPlayerName = getCookie("playerName");
+    if (!savedPlayerName) {
+      return;
+    }
+    console.log(`Retrieved player name: ${savedPlayerName} from cookies.`);
+    setPlayerName(savedPlayerName);
+  }, []);
 
   return (
     <NameUpdateContext value={setPlayerName}>
@@ -22,6 +33,9 @@ export const NameProvider = ({ children }: Props) => {
 
 export const usePlayerName = () => {
   const context = useContext(NameContext);
+  if (!context) {
+    console.error("Session has no player name");
+  }
   return context;
 };
 

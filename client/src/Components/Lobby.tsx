@@ -3,7 +3,7 @@ import { usePlayerName } from "./NameContext";
 import { useGameState, type Player } from "./Game";
 import { useSocketEmit } from "./SocketContext";
 import { useGameSocket } from "./SocketContext";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import PlayerBox from "./PlayerBox";
 import ChatWindow from "./ChatWindow";
 
