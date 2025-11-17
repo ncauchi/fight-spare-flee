@@ -24,12 +24,12 @@ function ChatWindow({ gameName, gameOwner, messages }: Props) {
   };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages]);
 
   return (
-    <Stack className="my-auto">
-      <ListGroup className="overflow-y-auto overflow-x-hidden m-4 lobby-chat">
+    <Stack className="my-auto lobby-chat">
+      <ListGroup className="overflow-y-auto overflow-x-hidden m-2">
         {messages.map((message, index) => (
           <ListGroup.Item key={index}>
             {message.player == "SERVER123" ? gameName : message.player}
@@ -39,7 +39,7 @@ function ChatWindow({ gameName, gameOwner, messages }: Props) {
         ))}
         <div ref={chatEndRef} />
       </ListGroup>
-      <Stack direction="horizontal" gap={2} className="mx-4">
+      <Stack direction="horizontal" gap={2} className="m-2 mt-auto">
         <Form.Control
           type="text"
           placeholder="Send Message"

@@ -1,0 +1,47 @@
+.game-board {
+    display: flexbox;
+    position: relative;
+    width: 95vw;
+    height: 95vh;
+    overflow: hidden;
+    perspective: 10000px;
+}
+
+.game-chat {
+    position: absolute;
+    top: 1px;
+    right: 0%;
+    top: 0%;
+}
+
+
+.card {
+    height: 15rem;
+    width: 10rem;
+    transition: transform 0.5s;
+    position: relative;
+    transform-style: preserve-3d;
+    border-radius: 1rem;
+
+    &.flipped {
+        transform: rotateY(180deg);
+    }
+}
+
+
+.card-front,
+.card-back {
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    border-radius: 1rem;
+    backface-visibility: hidden;
+}
+.card-front {
+    background-color: red;
+}
+
+.card-back {
+    background-color: blue; 
+    transform: rotateY(180deg);
+}

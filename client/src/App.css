@@ -24,8 +24,9 @@
 
 .lobby-chat {
   background-color: #454545;
-  height: 20rem;
+  height: 25rem;
   width: 25rem;
+  border-radius: 1rem;
 }
 
 .lobby-player-box {
