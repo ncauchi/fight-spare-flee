@@ -26,6 +26,11 @@ function Board() {
       <div className="game-chat">
         <ChatWindow gameName={gameState?.game_name} gameOwner={gameState.game_owner} messages={gameState.messages} />
       </div>
+      <div className="player-container position">
+        <div className="player-container container">
+          <div className="point" />
+        </div>
+      </div>
     </div>
   );
 }

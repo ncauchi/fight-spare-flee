@@ -1,47 +1,79 @@
 .game-board {
-    display: flexbox;
-    position: relative;
-    width: 95vw;
-    height: 95vh;
-    overflow: hidden;
-    perspective: 10000px;
+  display: flexbox;
+  position: absolute;
+  width: 95vw;
+  height: 95vh;
+  overflow: hidden;
+  perspective: 10000px;
+  top: 2.5vh;
+  left: 2.5vw;
 }
 
 .game-chat {
-    position: absolute;
-    top: 1px;
-    right: 0%;
-    top: 0%;
+  position: absolute;
+  top: 1px;
+  right: 0%;
+  top: 0%;
 }
-
 
 .card {
-    height: 15rem;
-    width: 10rem;
-    transition: transform 0.5s;
-    position: relative;
-    transform-style: preserve-3d;
-    border-radius: 1rem;
+  height: 15rem;
+  width: 10rem;
+  transition: transform 0.5s;
+  position: absolute;
+  transform-style: preserve-3d;
+  border-radius: 1rem;
+  top: 0;
 
-    &.flipped {
-        transform: rotateY(180deg);
-    }
+  &.flipped {
+    transform: rotateY(180deg);
+  }
 }
-
 
 .card-front,
 .card-back {
-    position: absolute;
-    height: 100%;
-    width: 100%;
-    border-radius: 1rem;
-    backface-visibility: hidden;
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  border-radius: 1rem;
+  backface-visibility: hidden;
 }
 .card-front {
-    background-color: red;
+  background-color: red;
 }
 
 .card-back {
-    background-color: blue; 
-    transform: rotateY(180deg);
+  background-color: blue;
+  transform: rotateY(180deg);
+}
+
+.player-container {
+  --rotation: 45deg;
+
+  &.position {
+    position: absolute;
+    left: 50%;
+    top: 0%;
+    transform: translateX(-50%) rotate(var(--rotation));
+    transform-origin: 50% calc(100% + 95vh);
+  }
+
+  &.container {
+    height: 10rem;
+    width: 15rem;
+    transform: rotate(calc(-1 * var(--rotation)));
+    transform-origin: 50% 50%;
+    padding: 0;
+  }
+}
+
+.point {
+  position: relative;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2rem;
+  height: 2rem;
+  border-radius: 1rem;
+  background-color: white;
 }
