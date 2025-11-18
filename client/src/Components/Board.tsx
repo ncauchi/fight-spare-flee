@@ -7,6 +7,7 @@ import { useState } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
 import ItemCard from "./ItemCard";
+import { useSocketEmit } from "./SocketContext";
 
 function Board() {
   const gameState = useGameState();
@@ -15,9 +16,15 @@ function Board() {
   const opponents = gameState?.players.filter((p) => {
     return p.name != playerName;
   });
+  const myTurn = gameState?.active_player === playerName;
+  const emit = useSocketEmit();
 
   const handleFlip = () => {
     setFlipped(!flipped);
+  };
+
+  const handleNextTurn = () => {
+    emit("END_TURN");
   };
 
   if (!gameState) return <Spinner></Spinner>;
@@ -31,11 +38,19 @@ function Board() {
         <ChatWindow gameName={gameState?.game_name} gameOwner={gameState.game_owner} messages={gameState.messages} />
       </div>
       {opponents?.map((p, i) => (
-        <BoardPlayerBox key={i} player={p} index={i} numPlayers={opponents.length} />
+        <BoardPlayerBox
+          key={i}
+          player={p}
+          index={i}
+          numPlayers={opponents.length}
+          active={gameState.active_player === p.name}
+        />
       ))}
-      <Button variant="primary" className={"next-turn-button"} onClick={handleFlip}>
-        <h3>Next Turn</h3>
-      </Button>
+      {myTurn && (
+        <Button variant="primary" className={"next-turn-button"} onClick={handleNextTurn}>
+          <h3>Next Turn</h3>
+        </Button>
+      )}
       <Stack direction="horizontal" gap={1} className="item-card-box">
         <ItemCard />
         <ItemCard />

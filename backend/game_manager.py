@@ -105,7 +105,19 @@ def START_GAME():
     
     print(f'Game: {game_snapshot._name} starting.')
     emit('CHAT', {'player': SERVER_NAME, 'text': f'Starting game...'}, to=game_id)
-    eventlet.spawn(start_game(game_id))
+    eventlet.spawn(start_game, game_id)
+
+
+@socketio.event
+def END_TURN():
+    with connections_lock:
+        player_name, game_id = connections[request.sid]
+
+    with game_locks[game_id]:
+        game = games[game_id]
+        new_active_name = game.advance_active_player()
+        
+    emit('CHANGE_TURN', new_active_name, to=game_id)
     
 
 @socketio.event
@@ -156,9 +168,9 @@ def cleanup_disconnect(sid):
 def start_game(game_id):
     with game_locks[game_id]:
         game = games[game_id]
-        game.start()
+        first_player = game.start()
     eventlet.sleep(0.1)
-    socketio.emit("START_GAME", to=game_id)
+    socketio.emit("START_GAME", first_player, to=game_id)
 
 @app.route("/internal/<game_id>", methods = ["POST"])
 def create_game(game_id):

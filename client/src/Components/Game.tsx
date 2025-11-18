@@ -20,6 +20,7 @@ export interface GameState {
   players: Player[];
   messages: Message[];
   connected: boolean;
+  active_player: string | null;
 }
 
 const GameStateContext = createContext<GameState | undefined>(undefined);
@@ -65,12 +66,31 @@ function Game() {
       players: data.players,
       messages: data.messages,
       connected: true,
+      active_player: null,
     });
     console.log("Retrieved game data from game service.");
   };
 
-  const handleStartGame = () => {
+  const handleTurnChange = (data: string) => {
+    console.log("New player turn: ", data);
+    setGameState((prevState) => {
+      if (!prevState) return undefined;
+      return {
+        ...prevState,
+        active_player: data,
+      };
+    });
+  };
+
+  const handleStartGame = (data: string) => {
     console.log("Starting Game...");
+    setGameState((prevState) => {
+      if (!prevState) return undefined;
+      return {
+        ...prevState,
+        active_player: data,
+      };
+    });
     navigate(`/play/${gameId}/board`);
   };
 
@@ -91,6 +111,10 @@ function Game() {
       {
         type: "START_GAME",
         func: handleStartGame,
+      },
+      {
+        type: "CHANGE_TURN",
+        func: handleTurnChange,
       },
     ],
     []
