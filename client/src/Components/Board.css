@@ -48,22 +48,19 @@
 }
 
 .player-container {
-  --rotation: 45deg;
-
   &.position {
     position: absolute;
-    left: 50%;
-    top: 0%;
-    transform: translateX(-50%) rotate(var(--rotation));
-    transform-origin: 50% calc(100% + 95vh);
+    transform: translate(-50%, 50%);
+    left: max(min((calc(cos(var(--angle)) * 60vw + 50%)), 95%), 5%);
+    bottom: min(calc(sin(var(--angle)) * 95vh), 90%);
   }
 
   &.container {
-    height: 10rem;
-    width: 15rem;
-    transform: rotate(calc(-1 * var(--rotation)));
-    transform-origin: 50% 50%;
+    height: 7rem;
+    width: 10rem;
     padding: 0;
+    background-color: grey;
+    border-radius: 1rem;
   }
 }
 
