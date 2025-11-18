@@ -52,7 +52,7 @@
     position: absolute;
     transform: translate(-50%, 50%);
     left: max(min((calc(cos(var(--angle)) * 60vw + 50%)), 95%), 5%);
-    bottom: min(calc(sin(var(--angle)) * 95vh), 90%);
+    bottom: min(calc(sin(var(--angle)) * 95vh), 93%);
   }
 
   &.container {
@@ -73,4 +73,32 @@
   height: 2rem;
   border-radius: 1rem;
   background-color: white;
+}
+
+.next-turn-button {
+  position: absolute;
+  right: 5%;
+  bottom: 5%;
+  height: 5rem;
+  width: 10rem;
+}
+
+.item-card-box {
+  position: absolute;
+  background-color: #4a4a4a;
+  bottom: 2%;
+  left: 5%;
+  border-radius: 1rem;
+}
+
+.item-card {
+  background-color: rgb(160, 134, 87);
+  width: 10rem;
+  height: 20rem;
+  transition: transform var(--hover-speed);
+  border-radius: 1rem;
+
+  &.hovering {
+    transform: translate(0, -2rem) rotate3d(1, 0.5, 0, 30deg);
+  }
 }

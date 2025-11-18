@@ -2,10 +2,11 @@ import "./Board.css";
 import ChatWindow from "./ChatWindow";
 import { type GameState, type Player } from "./Game";
 import { useGameState } from "./Game";
-import { Spinner, Button } from "react-bootstrap";
+import { Spinner, Button, Stack } from "react-bootstrap";
 import { useState } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
+import ItemCard from "./ItemCard";
 
 function Board() {
   const gameState = useGameState();
@@ -22,9 +23,6 @@ function Board() {
   if (!gameState) return <Spinner></Spinner>;
   return (
     <div className="game-board">
-      <Button variant="primary" onClick={handleFlip}>
-        Flip
-      </Button>
       <div className={`card ${flipped ? "flipped" : ""}`}>
         <div className="card-back" />
         <div className="card-front" />
@@ -35,6 +33,13 @@ function Board() {
       {opponents?.map((p, i) => (
         <BoardPlayerBox key={i} player={p} index={i} numPlayers={opponents.length} />
       ))}
+      <Button variant="primary" className={"next-turn-button"} onClick={handleFlip}>
+        <h3>Next Turn</h3>
+      </Button>
+      <Stack direction="horizontal" gap={1} className="item-card-box">
+        <ItemCard />
+        <ItemCard />
+      </Stack>
     </div>
   );
 }
