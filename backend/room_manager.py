@@ -65,7 +65,7 @@ def update_game(game_id):
     game = games.get(game_id)
 
     if not game:
-        return jsonify({"error": "game not found"}),
+        return jsonify({"error": "game not found"}), 404
     
     data = request.get_json()
     if not data or "num_players" not in data or "status" not in data:

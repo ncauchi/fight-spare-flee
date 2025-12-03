@@ -20,7 +20,7 @@ socketio = SocketIO(
 ROOMS_API_URL = "http://localhost:5000"
 SERVER_NAME = "SERVER123"
 
-connections : dict[str, (str, str)] = {} # player_name, game_id
+connections : dict[str, tuple[str, str]] = {} # player_name, game_id
 games : dict[str, GameState] = {}
 game_locks : dict[str, threading.Lock] = {}
 games_lock = threading.Lock()
@@ -52,7 +52,8 @@ def JOIN(game_id: str, player_name: str):
         if player_name in game.players:
             old_sid = game.players[player_name]
             disconnect(sid = old_sid)
-            del connections[old_sid]
+            with connections_lock:
+                del connections[old_sid]
             new_join = False
         
         connections[sid] = (player_name, game_id)
@@ -115,7 +116,8 @@ def END_TURN():
 
     with game_locks[game_id]:
         game = games[game_id]
-        new_active_name = game.advance_active_player()
+        game.advance_active_player()
+        new_active_name = game.get_active_player()
         
     emit('CHANGE_TURN', new_active_name, to=game_id)
     
@@ -144,22 +146,24 @@ def cleanup_disconnect(sid):
     player_leave = False
     player_name, game_id = "LOCK_WARNING", "LOCK_WARNING"
     players_snapshot = []
+    sid = request.sid
     
     with connections_lock:
-        sid = request.sid
         if sid in connections:
             player_name, game_id = connections[sid]
             del connections[sid]
             player_leave = True
-            if game_id in games:
-                with game_locks[game_id]:
-                    game = games[game_id]
-                    if player_name in game.players:
-                        del game.players[player_name]
-                    players_snapshot = game.players
+        else: 
+            player_leave = False
+    
+    if player_leave and game_id in games:
+        with game_locks[game_id]:
+            game = games[game_id]
+            if player_name in game.players:
+                del game.players[player_name]
+            players_snapshot = game.players
 
-    if player_leave:
-        update_lobby_service(game_id)
+        eventlet.spawn(update_lobby_service, game_id)
         socketio.emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} left.'}, to=game_id)
         socketio.emit('PLAYERS', {'players': [player_name for player_name in players_snapshot.keys()]}, to=game_id)
         print("Player: ",player_name, " left game: ", game_id)
@@ -168,7 +172,8 @@ def cleanup_disconnect(sid):
 def start_game(game_id):
     with game_locks[game_id]:
         game = games[game_id]
-        first_player = game.start()
+        game.start()
+        first_player = game.get_active_player()
     eventlet.sleep(0.1)
     socketio.emit("START_GAME", first_player, to=game_id)
 
@@ -206,8 +211,7 @@ def update_lobby_service(id):
         )
     if response.status_code != 200:
         print(f"Failed to update game {name}: {response.status_code}")
-    #else:
-        #print(f"Updated game: {name}")
+
 
 if __name__ == "__main__":
     #socketio.start_background_task(poll_lobby_service)
