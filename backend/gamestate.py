@@ -4,9 +4,19 @@ import random
 
 
 class Item:
+    name: str
 
     def __init__(self):
         pass
+
+class Monster:
+    stars: int
+    name: str
+
+    def __init__(self):
+        self.stars = 1
+        self.name = "tmp"
+
 
 class Player:
     name: str
@@ -14,6 +24,8 @@ class Player:
     session: str
     coins: int
     itmes: list[Item]
+    captured_stars: list[int]
+    health: int
 
     def __init__(self, name: str, sid: str):
         self.name = name
@@ -21,15 +33,25 @@ class Player:
         self.lobby_ready = False
         self.coins = 0
         self.itmes = []
+        self.captured_stars = []
+        self.health = 4
 
-class Monster:
-
-    def __init__(self):
-        pass
+    def get_status_hand(self):
+        return {
+            "items": [{'name': item.name} for item in self.itmes],
+        }
+    
+    def get_status_public(self):
+        return {
+            "name": self.name, 
+            "ready": self.lobby_ready,
+            "coins": self.coins,
+            "num_items": len(self.itmes),
+            "health": self.health,
+        }
 
 
 class EventType(Enum):
-    DAMAGE = auto()
     FSF = auto()
     COINS = auto()
     SHOP = auto()
@@ -48,9 +70,7 @@ class Event:
         self.type = type
 
 class FsfEvent(Event):
-
     monster_results: list[Monster]
-
     def __init__(self, deck: list[Monster]):
         super().__init__(type=EventType.FSF)
         self.monster_results = random.sample(deck, 3)
@@ -58,12 +78,17 @@ class FsfEvent(Event):
             deck.remove(monster)
 
 class TakeCoinEvent(Event):
-
     amount_to_take: int
-
     def __init__(self):
         super().__init__(type=EventType.COINS)
         self.amount_to_take = 2
+
+class BuyItemEvent(Event):
+    item: Item
+    def __init__(self, shop: list[Item]):
+        super().__init__(type=EventType.SHOP)
+        self.item = shop.pop()
+        
 
 
 class EventBus:
@@ -129,6 +154,7 @@ class GameState:
     #Board
     deck: list[Monster]
     shop: list[Item]
+    fsf_monsters: list[tuple[Monster, bool]] # Monster, is_flipped
 
     def __init__(self, id : str, name : str, owner : str, max_players: int):
         self._id = id
@@ -137,12 +163,45 @@ class GameState:
         self._max_players = max_players
         self.players = {}
         self.status = "in_lobby"
-
-    def to_status(self):
+    
+    def get_status_lobby(self):
+        """
+        Returns high level game status in JSON format
+        """
         return {
             "num_players": len(self.players.keys()),
             "status": self.status
         }
+    
+    def get_status_players(self):
+        """
+        Returns public players info in JSON format
+        """
+        return [player.get_status_public() for player in self.players.values()]
+
+    def get_status_board(self):
+        """
+        Returns board status in JSON format
+        """
+
+        ret = {
+            'deck': {
+                'size': len(self.deck),
+                'top_card_stars': self.deck[0].stars,
+            },
+            'shop': {
+                'size': len(self.shop),
+            },
+        }
+
+        if self.turn_phase == TurnPhase.IN_COMBAT:
+            visible_monsters = [{'name': monster.name, 'stars': monster.stars} for monster, visible in self.fsf_monsters if visible]
+            flipped_monsters = [{'stars': monster.stars} for monster, visible in self.fsf_monsters if not visible]
+
+            ret["monsters"] = {'visible': visible_monsters, 'flipped': flipped_monsters}
+
+        return ret
+    
     
     def start(self) -> None:
         '''
@@ -157,15 +216,8 @@ class GameState:
         self.__init_shop()
         self.__init_deck()
 
-    def handle_player_action(self, player: str, action: EventType) -> bool:
-        if player not in self.players.keys():
-            raise KeyError(f"Player {player} is not in the game.")
         
-        if self.get_active_player() != player:
-            print("Player tried to act out of turn")
-            return False
-        
-    def _take_coins(self) -> int:
+    def take_coins(self) -> int:
         '''
         returns the amount of coins gained
         '''
@@ -180,40 +232,79 @@ class GameState:
         self.turn_phase = TurnPhase.TURN_ENDED
         return coins_event.amount_to_take
 
-    def _shop(self):
-        if self.turn_phase != TurnPhase.CHOOSING_ACTION:
+    def shop_items(self) -> Item:
+        if self.turn_phase != TurnPhase.CHOOSING_ACTION or self.turn_phase != TurnPhase.SHOPPING:
             print("Tried to take shop for items on invalid turn step")
-            return
-        
-        shop_event = Event()
-        self._event_bus.emit(shop_event)
+            return None
+        player = self.get_active_player_obj()
+        if player.coins < 2:
+            print("Player does not have enough coins to buy")
+            return None
 
-    def _fsf(self):
+        if player.itmes > 4:
+            print("Player has too many items to buy")
+            return None
+        
+        shop_event = BuyItemEvent(self.shop)
+        player.coins -= 2
+        self._event_bus.emit(shop_event)
+        self.turn_phase = TurnPhase.TURN_ENDED if player.coins < 2 else TurnPhase.SHOPPING
+
+        return shop_event.item
+
+    def fsf(self) -> None:
         if self.turn_phase != TurnPhase.CHOOSING_ACTION:
             print("Tried to fsf on invalid turn step")
             return
         
-        self.players[self.get_active_player()].coins += 2
+        fsf_event = FsfEvent()
+        self._event_bus.emit(fsf_event)
+        self.fsf_monsters = [(monster, False) for monster in fsf_event.monster_results]
+        
+        self.turn_phase = TurnPhase.IN_COMBAT
+        return
+        
+    def fsf_fight(self):
+        if self.turn_phase != TurnPhase.IN_COMBAT:
+            print("Tried to fight but turn phase is not 'in combat' ")
         self.turn_phase = TurnPhase.TURN_ENDED
-        
+        pass
 
-
+    def fsf_spare(self):
+        if self.turn_phase != TurnPhase.IN_COMBAT:
+            print("Tried to fight but turn phase is not 'in combat' ")
+        self.turn_phase = TurnPhase.TURN_ENDED
+        pass
         
+    def fsf_flee(self):
+        if self.turn_phase != TurnPhase.IN_COMBAT:
+            print("Tried to fight but turn phase is not 'in combat' ")
+        self.turn_phase = TurnPhase.TURN_ENDED
+        pass
 
     def advance_active_player(self) -> None:
         curr = self._active_player
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
 
+        self.turn_phase = TurnPhase.CHOOSING_ACTION
+
     def get_active_player(self) -> str:
         return self._turn_order[self._active_player]
     
+    def get_active_player_obj(self) -> Player:
+        return self.players[self._turn_order[self._active_player]]
+    
     def __init_deck(self):
         #TODO update
-        self.deck = []
+        m = Monster()
+        m.name = "dev_monster"
+        m.stars = 2
+        self.deck = [m]*99
         
     def __init_shop(self):
         #TODO update
+        
         self.shop = []
     
 

@@ -4,7 +4,7 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
-from gamestate import GameState, Player
+from gamestate import GameState, Player, TurnPhase, EventType
 import threading
 import requests
 
@@ -58,12 +58,12 @@ def JOIN(game_id: str, player_name: str):
         
         connections[sid] = (player_name, game_id)
         game.players[player_name] = Player(name=player_name, sid=sid)
-        players_snapshot = game.players
+        players_snapshot = game.get_status_players()
 
     if new_join:
         print("Player: ",player_name, " joined game: ", game_id)
         emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
-        emit('PLAYERS', {'players': [{"name": player.name, "ready": player.lobby_ready} for player in players_snapshot.values()]}, to=game_id, include_self=False)
+        emit('PLAYERS', players_snapshot, to=game_id, include_self=False)
         eventlet.spawn(notify_new_join, sid, game_id)
         eventlet.spawn(update_lobby_service, game_id)
     else:
@@ -81,9 +81,9 @@ def LOBBY_READY(ready: bool):
     with lock:
         player = games[game_id].players[player_name]
         player.lobby_ready = ready
-        players_snapshot = games[game_id].players
+        players_snapshot = games[game_id].get_status_players()
     
-    emit('PLAYERS', {'players': [{"name": player.name, "ready": player.lobby_ready} for player in players_snapshot.values()]}, to=game_id)
+    emit('PLAYERS', players_snapshot, to=game_id)
 
 @socketio.event
 def START_GAME():
@@ -119,13 +119,77 @@ def END_TURN():
         game.advance_active_player()
         new_active_name = game.get_active_player()
         
-    emit('CHANGE_TURN', new_active_name, to=game_id)
+    emit('CHANGE_TURN', new_active_name, to=game_id) 
     
 
 @socketio.event
 def CHAT(player: str, text: str):
     _, room = connections[request.sid]
     emit('CHAT', {'player': player, 'text': text}, to=room)
+
+@socketio.event
+def ACTION(choice: str):
+    with connections_lock:
+        player_name, game_id = connections[request.sid]
+
+    res = []
+    players_change = False
+    board_change = False
+    with game_locks[game_id]:
+        game = games[game_id]
+        if player_name != game.get_active_player():
+            print(f"Player {player_name} tried to go out of turn")
+            return
+        
+        if choice not in [member.name for member in EventType]:
+            print(f"Player {player_name} tried to do invalid action {choice}")
+            return
+
+        action = EventType(choice)
+
+        if game.turn_phase != TurnPhase.CHOOSING_ACTION and not (game.turn_phase == TurnPhase.SHOPPING and action == EventType.SHOP):
+            print(f"Player {player_name} tried to do action in wrong order")
+            return
+
+        if action == EventType.COINS:
+            game.take_coins()
+            players_change = True
+            
+        elif action == EventType.SHOP:
+            game.shop_items()
+            res.append(lambda: emit('HAND', game.get_active_player_obj().get_status_hand(), to=request.sid))
+            players_change = True
+
+        elif action == EventType.FSF:
+            game.fsf()
+            board_change = True
+
+
+        else:
+            print(f"Player {player_name} tried to do action {choice} which is invalid")
+            return
+        
+        players_snapshot = game.get_status_players()
+        board_snapshot = game.get_status_board()
+
+        
+    for r in res:
+        r()
+
+    if players_change:
+        emit('PLAYERS', players_snapshot, to=game_id)
+
+    if board_change:
+        emit('BOARD', board_snapshot )
+
+    
+
+        
+@socketio.event
+def FSF(target: int):
+    with connections_lock:
+        player_name, game_id = connections[request.sid]
+    
 
 
 def notify_new_join(sid, game_id):
@@ -161,11 +225,11 @@ def cleanup_disconnect(sid):
             game = games[game_id]
             if player_name in game.players:
                 del game.players[player_name]
-            players_snapshot = game.players
+            players_snapshot = game.get_status_players()
 
         eventlet.spawn(update_lobby_service, game_id)
         socketio.emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} left.'}, to=game_id)
-        socketio.emit('PLAYERS', {'players': [player_name for player_name in players_snapshot.keys()]}, to=game_id)
+        socketio.emit('PLAYERS', players_snapshot, to=game_id)
         print("Player: ",player_name, " left game: ", game_id)
 
 
@@ -202,7 +266,7 @@ def update_lobby_service(id):
     lock = game_locks[id]
 
     with lock:
-        status = games[id].to_status()
+        status = games[id].get_status_lobby()
         name = games[id]._name
     response = requests.put(
             f"{ROOMS_API_URL}/games/{id}",

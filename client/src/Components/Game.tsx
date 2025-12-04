@@ -47,13 +47,13 @@ function Game() {
     });
   };
 
-  const handlePlayersUpdate = (data: { players: Player[] }) => {
+  const handlePlayersUpdate = (data: Player[]) => {
     console.log("Recieved player updates from server", data);
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
         ...prevState,
-        players: data.players,
+        players: data,
       };
     });
   };
