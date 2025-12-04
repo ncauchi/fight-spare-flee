@@ -1,9 +1,4 @@
-"""
-Core test fixtures and configuration for Flask-SocketIO testing.
 
-CRITICAL: eventlet.monkey_patch() must be called BEFORE any other imports
-to ensure proper async behavior and threading compatibility.
-"""
 import eventlet
 eventlet.monkey_patch()
 
@@ -46,19 +41,21 @@ def clean_global_state():
         game_locks.clear()
 
 
-@pytest.fixture(scope="function")
-def app_fixture(clean_global_state):
+@pytest.fixture(scope="session")
+def app_fixture():
     """
-    Provides a fresh Flask app instance with cleaned state.
+    Provides the Flask app instance.
+    Session-scoped so it's shared across all tests.
     """
     app.config['TESTING'] = True
     return app
 
 
-@pytest.fixture(scope="function")
-def socketio_server(app_fixture):
+@pytest.fixture(scope="session")
+def socketio_server():
     """
-    Provides the SocketIO server instance with cleaned state.
+    Provides the SocketIO server instance.
+    Session-scoped so it's shared across all tests.
     """
     return socketio
 
@@ -96,7 +93,7 @@ def test_game(game_id, mock_lobby_api, clean_global_state):
 
     # Create game directly by initializing GameState and locks
     with games_lock:
-        games[game_id] = GameState(game_name, owner, max_players)
+        games[game_id] = GameState(game_id, game_name, owner, max_players)
         game_locks[game_id] = threading.Lock()
 
     return {
@@ -107,18 +104,42 @@ def test_game(game_id, mock_lobby_api, clean_global_state):
     }
 
 
+@pytest.fixture(scope="session")
+def server_thread(socketio_server):
+    """
+    Runs the SocketIO server in a background thread for testing.
+    Session-scoped so the server starts once and is shared by all tests.
+    """
+    import threading
+
+    # Start server in background thread
+    server_thread = threading.Thread(
+        target=lambda: socketio_server.run(app, host='127.0.0.1', port=5001, debug=False, use_reloader=False, log_output=False),
+        daemon=True
+    )
+    server_thread.start()
+
+    # Wait for server to start
+    eventlet.sleep(1.5)
+
+    yield
+
+    # Server will be killed when test session ends (daemon thread)
+
+
 @pytest.fixture(scope="function")
-def client_factory(socketio_server):
+def client_factory(server_thread):
     """
     Factory fixture for creating multiple test clients.
     Handles cleanup of all created clients.
+    Requires server_thread to be running.
     """
     clients = []
 
     def _create_client():
         """Creates a new SocketIO test client."""
         from helpers.socketio_client import TestSocketIOClient
-        client = TestSocketIOClient('http://localhost:5001')
+        client = TestSocketIOClient('http://127.0.0.1:5001')
         clients.append(client)
         return client
 

@@ -1,1 +1,9 @@
 node_modules/
+
+# Python test coverage
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Environment variables
+.env

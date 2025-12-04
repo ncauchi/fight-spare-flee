@@ -112,15 +112,24 @@ class TestSocketIOClient:
         def handler(data):
             self.received_events[event_name].append(data)
 
-    def emit(self, event_name: str, data: Any = None):
+    def emit(self, event_name: str, *args):
         """
         Emit an event to the server.
 
         Args:
             event_name: Name of the event
-            data: Data to send with the event
+            *args: Variable arguments to send with the event
+
+        Note: Multiple arguments are automatically packed into a tuple
+        for the socketio client.
         """
-        self.client.emit(event_name, data)
+        if len(args) == 0:
+            self.client.emit(event_name)
+        elif len(args) == 1:
+            self.client.emit(event_name, args[0])
+        else:
+            # Multiple args - pass as tuple (socketio expects this)
+            self.client.emit(event_name, args)
 
     def get_received(self, event_name: str) -> List[Any]:
         """

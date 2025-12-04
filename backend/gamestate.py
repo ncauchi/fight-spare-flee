@@ -1,4 +1,4 @@
-from typing import Literal, get_args
+from typing import Literal, get_args, Callable
 from enum import Enum, auto
 import random
 
@@ -93,12 +93,12 @@ class BuyItemEvent(Event):
 
 class EventBus:
 
-    listeners: dict[str, list[function]]
+    listeners: dict[str, list[Callable]]
 
     def __init__(self):
         self.listeners = {}
 
-    def subscribe(self, event_type: str, callback: function) -> function:
+    def subscribe(self, event_type: str, callback: Callable) -> Callable:
         '''
         Used to subscribe a function to a specific return type, returns an unsubscribe function that can be called to delink the function.
         The function will be called and passed the event whenever an event of that type happens.
