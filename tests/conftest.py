@@ -6,18 +6,31 @@ import pytest
 import uuid
 import threading
 import requests_mock
+from collections.abc import Generator, Callable
+from typing import TypedDict
 
 # Import after monkey patching
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'helpers'))
 
 from game_manager import app, socketio, connections, games, game_locks, connections_lock, games_lock
 from gamestate import GameState
+from flask import Flask
+from flask_socketio import SocketIO
+from helpers.socketio_client import TestSocketIOClient
+
+
+class GameDetails(TypedDict):
+    game_id: str
+    name: str
+    owner: str
+    max_players: int
 
 
 @pytest.fixture(scope="function")
-def clean_global_state():
+def clean_global_state() -> Generator[None, None, None]:
     """
     Clears all global state before and after each test.
     Critical for test isolation.
@@ -32,7 +45,6 @@ def clean_global_state():
 
     yield
 
-    # Clear after test
     with connections_lock:
         connections.clear()
 
@@ -42,7 +54,7 @@ def clean_global_state():
 
 
 @pytest.fixture(scope="session")
-def app_fixture():
+def app_fixture() -> Flask:
     """
     Provides the Flask app instance.
     Session-scoped so it's shared across all tests.
@@ -52,7 +64,7 @@ def app_fixture():
 
 
 @pytest.fixture(scope="session")
-def socketio_server():
+def socketio_server() -> SocketIO:
     """
     Provides the SocketIO server instance.
     Session-scoped so it's shared across all tests.
@@ -61,7 +73,7 @@ def socketio_server():
 
 
 @pytest.fixture(scope="function")
-def game_id():
+def game_id() -> str:
     """
     Generates a unique game ID for each test.
     """
@@ -69,7 +81,7 @@ def game_id():
 
 
 @pytest.fixture(scope="function")
-def mock_lobby_api():
+def mock_lobby_api() -> Generator[requests_mock.Mocker, None, None]:
     """
     Mocks HTTP requests to the lobby service (localhost:5000).
     """
@@ -79,8 +91,9 @@ def mock_lobby_api():
         yield m
 
 
+#Remove this BS slop
 @pytest.fixture(scope="function")
-def test_game(game_id, mock_lobby_api, clean_global_state):
+def test_game(game_id: str, mock_lobby_api: requests_mock.Mocker, clean_global_state: None) -> GameDetails:
     """
     Creates a pre-configured test game via the /internal endpoint.
 
@@ -105,7 +118,7 @@ def test_game(game_id, mock_lobby_api, clean_global_state):
 
 
 @pytest.fixture(scope="session")
-def server_thread(socketio_server):
+def server_thread(socketio_server: SocketIO) -> Generator[None, None, None]:
     """
     Runs the SocketIO server in a background thread for testing.
     Session-scoped so the server starts once and is shared by all tests.
@@ -128,17 +141,16 @@ def server_thread(socketio_server):
 
 
 @pytest.fixture(scope="function")
-def client_factory(server_thread):
+def client_factory(server_thread: None) -> Generator[Callable[[], TestSocketIOClient], None, None]:
     """
     Factory fixture for creating multiple test clients.
     Handles cleanup of all created clients.
     Requires server_thread to be running.
     """
-    clients = []
+    clients: list[TestSocketIOClient] = []
 
-    def _create_client():
+    def _create_client() -> TestSocketIOClient:
         """Creates a new SocketIO test client."""
-        from helpers.socketio_client import TestSocketIOClient
         client = TestSocketIOClient('http://127.0.0.1:5001')
         clients.append(client)
         return client

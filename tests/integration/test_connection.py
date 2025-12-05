@@ -84,3 +84,32 @@ def test_multiple_clients_connect(client_factory, clean_global_state):
     # Cleanup
     for client in clients:
         client.disconnect()
+
+@pytest.mark.integration
+def test_client_join(client_factory, test_game, clean_global_state):
+
+
+    client : TestSocketIOClient = client_factory()
+    game_id = test_game['game_id']
+    player_name = "test_player"
+
+    expected_output = {
+        "game_name": test_game["name"],
+        "game_owner": test_game["owner"],
+        "max_players": 4,
+        "players": [{'name': player_name, 'ready': False}],
+        "messages": [{'player': 'SERVER123', 'text': 'Welcome to the game'}],
+    }
+
+    client.track_event('INIT')
+
+    client.connect()
+    client.emit('JOIN', game_id, player_name)
+
+    eventlet.sleep(0.3)
+
+    init_events = client.get_received("INIT")
+
+    assert client.is_connected(), "Client should be connected"
+    assert len(init_events) == 1
+    assert init_events[0] == expected_output

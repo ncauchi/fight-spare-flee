@@ -9,16 +9,7 @@ from typing import Dict, List, Any, Optional
 
 
 class TestSocketIOClient:
-    """
-    Wrapper around python-socketio Client for testing.
-
-    Features:
-    - Automatic event tracking
-    - Synchronous wait for events
-    - Clean connection/disconnection
-    - Helper methods for common operations
-    """
-
+    __test__ = False
     def __init__(self, server_url: str = 'http://localhost:5001'):
         """
         Initialize test client.
