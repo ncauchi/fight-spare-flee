@@ -40,10 +40,10 @@ def test_disconnect():
 def JOIN(game_id: str, player_name: str):
     sid = request.sid
     lock = game_locks[game_id]
-    game = games[game_id]
     players_snapshot = []
     new_join = True
     with lock:
+        game = games[game_id]
         if len(game.players) == game._max_players:
             disconnect()
             print(f'Player: "{player_name}" tried to join full game: "{game._name}"')
@@ -55,13 +55,13 @@ def JOIN(game_id: str, player_name: str):
             with connections_lock:
                 del connections[old_sid]
             new_join = False
-        
+
+        print("Player: ",player_name, " joined game: ", game_id)
         connections[sid] = (player_name, game_id)
         game.players[player_name] = Player(name=player_name, sid=sid)
         players_snapshot = game.get_status_players()
 
     if new_join:
-        print("Player: ",player_name, " joined game: ", game_id)
         emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
         emit('PLAYERS', players_snapshot, to=game_id, include_self=False)
         eventlet.spawn(notify_new_join, sid, game_id)
@@ -82,6 +82,7 @@ def LOBBY_READY(ready: bool):
         player = games[game_id].players[player_name]
         player.lobby_ready = ready
         players_snapshot = games[game_id].get_status_players()
+        print(f'Player "{player.name}" became {"ready" if ready else "unready"} "{games[game_id]._name}"')
     
     emit('PLAYERS', players_snapshot, to=game_id)
 
@@ -94,15 +95,15 @@ def START_GAME():
     with game_locks[game_id]:
         game_snapshot = games[game_id]
     
-    if game_snapshot._owner != player_name:
-        print(f'Player {player_name} tried to start game: {game_snapshot._name} but they are not the owner.')
-        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} tried to hack.'}, to=game_id, include_self=False)
-        return
-    
-    if not all([player.lobby_ready for player in game_snapshot.players.values()]):
-        print(f'Game: {game_snapshot._name} but not all players are ready.')
-        emit('CHAT', {'player': SERVER_NAME, 'text': f'Not all players are ready'}, broadcast=False)
-        return
+        if game_snapshot._owner != player_name:
+            print(f'Player {player_name} tried to start game: {game_snapshot._name} but they are not the owner.')
+            emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} tried to hack.'}, to=game_id, include_self=False)
+            return
+
+        if not all([player.lobby_ready for player in game_snapshot.players.values()]):
+            print(f'Game: "{game_snapshot._name}" tried to start but not all players are ready.')
+            emit('CHAT', {'player': SERVER_NAME, 'text': f'Not all players are ready'}, broadcast=False)
+            return
     
     print(f'Game: {game_snapshot._name} starting.')
     emit('CHAT', {'player': SERVER_NAME, 'text': f'Starting game...'}, to=game_id)

@@ -6,6 +6,7 @@ client calls to actually join game after connecting to server
 
 checks if game is full or player is already in the game
 
+sends initialization to new join
 updates players state for connected clients
 
 ## LOBBY_READY(ready: bool):

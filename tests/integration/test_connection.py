@@ -113,3 +113,71 @@ def test_client_join(client_factory, test_game, clean_global_state):
     assert client.is_connected(), "Client should be connected"
     assert len(init_events) == 1
     assert init_events[0] == expected_output
+
+@pytest.mark.integration
+def test_normal_run(client_factory, test_game, clean_global_state):
+
+
+    client : TestSocketIOClient = client_factory()
+    client_two : TestSocketIOClient = client_factory()
+    game_id = test_game['game_id']
+    player_name = "test_player"
+    second_player_name = test_game["owner"]
+
+    expected_init = {
+        "game_name": test_game["name"],
+        "game_owner": test_game["owner"],
+        "max_players": 4,
+        "players": [{'name': second_player_name, 'ready': True}, {'name': player_name, 'ready': False}],
+        "messages": [{'player': 'SERVER123', 'text': 'Welcome to the game'}],
+    }
+
+    expected_players = [[{'name': second_player_name, 'ready': True, 'coins': 0, 'num_items': 0, 'health': 4}, 
+                        {'name': player_name, 'ready': False, 'coins': 0, 'num_items': 0, 'health': 4}],
+                        [{'name': second_player_name, 'ready': True, 'coins': 0, 'num_items': 0, 'health': 4}, 
+                        {'name': player_name, 'ready': True, 'coins': 0, 'num_items': 0, 'health': 4}]]
+
+    expected_start_game = second_player_name
+
+    expected_turn = ['test_player', 'TestOwner']
+
+    client.track_event('INIT')
+    client.track_event('PLAYERS')
+    client.track_event('START_GAME')
+    client.track_event('CHANGE_TURN')
+    
+    
+    client_two.connect()
+    client_two.emit('JOIN', game_id, second_player_name)
+
+    client.connect()
+    client.emit('JOIN', game_id, player_name)
+    eventlet.sleep(0.1)
+    client_two.emit('LOBBY_READY', True)
+    eventlet.sleep(0.1)
+    client.emit('LOBBY_READY', True)
+    eventlet.sleep(0.1)
+    client_two.emit('START_GAME')
+
+    eventlet.sleep(0.3)
+
+    client.emit('END_TURN')
+    client_two.emit('END_TURN')
+
+    eventlet.sleep(0.3)
+
+
+
+    init_events = client.get_received("INIT")
+    players_events = client.get_received("PLAYERS")
+    start_events = client.get_received("START_GAME")
+    turn_events = client.get_received("CHANGE_TURN")
+    
+    assert len(init_events) == 1
+    assert len(start_events) == 1
+    assert init_events[0] == expected_init
+    assert players_events == expected_players
+    assert start_events[0] == expected_start_game
+    assert turn_events == expected_turn
+
+
