@@ -4,6 +4,7 @@ import Form from "react-bootstrap/Form";
 import Button from "react-bootstrap/Button";
 import Stack from "react-bootstrap/Stack";
 import { useNavigate } from "react-router-dom";
+import configData from "../config.json";
 
 function CreateRoom() {
   const playerName = usePlayerName();
@@ -17,7 +18,7 @@ function CreateRoom() {
       return;
     }
     setLoading(true);
-    const response = await fetch(`http://localhost:5000/games`, {
+    const response = await fetch(`${configData.LOBBY_URL}/games`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

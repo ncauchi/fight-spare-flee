@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import Button from "react-bootstrap/Button";
 import Stack from "react-bootstrap/Stack";
 import Spinner from "react-bootstrap/Spinner";
+import configData from "../config.json";
 
 interface Room {
   id: string;
@@ -16,7 +17,7 @@ interface Room {
 function ServerBrowser() {
   const navigate = useNavigate();
 
-  const roomsAPI = "http://localhost:5000/games";
+  const roomsAPI = `${configData.LOBBY_URL}/games`;
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
 

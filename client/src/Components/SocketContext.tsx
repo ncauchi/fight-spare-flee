@@ -1,7 +1,8 @@
 import { type ReactNode, createContext, useState, useContext, useRef, useEffect, type RefObject } from "react";
 import { io, type Socket } from "socket.io-client";
+import configData from ".././config.json";
 
-const SOCKET_URL = "http://localhost:5001";
+const SOCKET_URL = configData.GAMES_URL;
 
 export interface SocketContextType {
   socketRef: RefObject<Socket | null>;

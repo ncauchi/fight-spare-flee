@@ -7,6 +7,7 @@ from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 from gamestate import GameState, Player, TurnPhase, EventType
 import threading
 import requests
+from test import get_local_ip
 
 app = Flask(__name__)
 CORS(app)
@@ -280,4 +281,6 @@ def update_lobby_service(id):
 
 if __name__ == "__main__":
     #socketio.start_background_task(poll_lobby_service)
+    print("Running at: ", get_local_ip())
     socketio.run(app, debug=True, host="0.0.0.0", port=5001, use_reloader=False)
+    
