@@ -88,7 +88,7 @@ echo -e "${GREEN}✓ Lobby Service running on http://localhost:${LOBBY_PORT}${NC
 # Start Frontend(s)
 if [ $NUM_CLIENTS -eq 1 ]; then
     start_service "Frontend" "$FRONTEND_DIR" \
-        "npm run dev" "$YELLOW" "Frontend"
+        "npm run dev -- --host" "$YELLOW" "Frontend"
     echo -e "${BLUE}✓ Frontend running on http://localhost:${FRONTEND_PORT}${NC}\n"
 else
     echo -e "${BLUE}Starting ${NUM_CLIENTS} frontend clients...${NC}\n"

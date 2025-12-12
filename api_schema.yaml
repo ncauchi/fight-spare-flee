@@ -1,0 +1,272 @@
+openapi: 3.0.0
+info:
+  title: Fight Spare Flee API
+  version: 1.0.0
+  description: API contract for Fight Spare Flee
+
+components:
+  schemas:
+    # Shared Objects
+    Message:
+      type: object
+      description: A game message
+      required: [player, text]
+      properties:
+        player:
+          type: string
+        text:
+          type: string
+
+    Item:
+      type: object
+      description: An item that players can collect
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    Monster:
+      type: object
+      description: A monster
+      required: [stars]
+      properties:
+        name:
+          type: string
+        stars:
+          type: integer
+          minimum: 1
+          maximum: 3
+
+    Player:
+      type: object
+      description: Public player information
+      required: [name, ready]
+      properties:
+        name:
+          type: string
+        ready:
+          type: boolean
+        coins:
+          type: integer
+        num_items:
+          type: integer
+        health:
+          type: integer
+
+    PlayerHand:
+      type: object
+      description: Private player information (only visible to that player)
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Item"
+
+    GameStatus:
+      type: object
+      description: High-level game state used while browsing
+      required:
+        - num_players
+        - status
+      properties:
+        num_players:
+          type: integer
+          minimum: 0
+          example: 3
+        status:
+          type: string
+          enum: [in_lobby, in_game, ended]
+          example: "in_lobby"
+
+    BoardState:
+      type: object
+      description: Current board state
+      required:
+        - deck
+        - shop
+      properties:
+        deck:
+          type: object
+          required:
+            - size
+            - top_card_stars
+          properties:
+            size:
+              type: integer
+              description: Number of cards remaining in deck
+            top_card_stars:
+              type: integer
+              description: Star value of top card
+        shop:
+          type: object
+          required:
+            - size
+          properties:
+            size:
+              type: integer
+              description: Number of items available in shop
+        monsters:
+          type: object
+          description: Only present during combat phase
+          properties:
+            visible:
+              type: array
+              items:
+                $ref: "#/components/schemas/Monster"
+            flipped:
+              type: array
+              items:
+                type: object
+                properties:
+                  stars:
+                    type: integer
+
+    PlayerActionChoice:
+      type: string
+      enum:
+        - COINS
+        - SHOP
+        - FSF
+        - END
+      description: "Actions players can take on their turn"
+
+    # -------------------------------------------------------------------------
+    # REQUEST/RESPONSE TYPES (CLIENT ↔ SERVER)
+    # Naming convention: Use suffixes to indicate direction
+    # - *Request: CLIENT → SERVER
+    # - *Response: SERVER → CLIENT
+    # - *Event: SERVER → CLIENT (broadcast)
+    # -------------------------------------------------------------------------
+
+    # REST API Responses
+    CreateGameResponse:
+      type: object
+      description: "SERVER → CLIENT: Response when creating a game"
+      required:
+        - game_id
+      properties:
+        game_id:
+          type: string
+          example: "game_123"
+
+    JoinGameRequest:
+      type: object
+      description: "CLIENT → SERVER: Request to join a game"
+      required:
+        - player_name
+      properties:
+        player_name:
+          type: string
+          example: "Bob"
+
+    # SocketIO Event Payloads
+
+    JoinRequest:
+      type: object
+      description: "Used to actually join game after connecting to server"
+      required: [game_id, player_name]
+      properties:
+        game_id:
+          type: string
+        player_name:
+          type: string
+
+    LobbyReadyRequest:
+      type: object
+      description: "Used in lobby to let others know they're ready to start"
+      required: [ready]
+      properties:
+        ready:
+          type: boolean
+
+    StartGameRequest:
+      type: object
+      description: "Called by owning client to start game when all are ready"
+
+    EndTurnRequest:
+      type: object
+      description: "Called by client to end their turn during the game"
+
+    ChatRequest:
+      type: object
+      description: "Called by client send a message"
+      required: [text]
+      properties:
+        text:
+          type: string
+
+    ActionRequest:
+      type: object
+      description: "Used to do game actions like using items or fsf"
+      required: [choice]
+      properties:
+        choice:
+          $ref: "#/components/schemas/PlayerActionChoice"
+
+    ActionAcknowledge:
+      type: object
+      description: "Acknowledgement if action was successful or the result"
+      required: [successful]
+      properties:
+        successful:
+          type: boolean
+
+    InitResponse:
+      type: object
+      description: "Initializes game for a new join"
+      required: [game_name, game_owner, max_players, players, messages, status]
+      properties:
+        game_name:
+          type: string
+        game_owner:
+          type: string
+        max_players:
+          type: integer
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/Player"
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        status:
+          type: string
+        active_player:
+          type: string
+
+    StartGameEvent:
+      type: object
+      description: "event to move out of lobby phase"
+      required: [first_player]
+      properties:
+        first_player:
+          type: string
+
+    PlayersEvent:
+      type: object
+      description: "Event to update players information"
+      required: [players]
+      properties:
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/Player"
+
+    #decapricated
+    ChatEvent:
+      type: object
+      description: "Event when a chat is sent to everyone"
+      required: [message]
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
+
+    ChangeTurnEvent:
+      type: object
+      description: "Event to tell clients that the turn changed"
+      required: [new_active]
+      properties:
+        new_active:
+          type: string

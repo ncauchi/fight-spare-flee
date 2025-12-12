@@ -8,6 +8,7 @@ from gamestate import GameState, Player, TurnPhase, EventType
 import threading
 import requests
 from test import get_local_ip
+import api_types
 
 app = Flask(__name__)
 CORS(app)
@@ -63,7 +64,9 @@ def JOIN(game_id: str, player_name: str):
         players_snapshot = game.get_status_players()
 
     if new_join:
-        emit('CHAT', {'player': SERVER_NAME, 'text': f'{player_name} joined.'}, to=game_id, include_self=False)
+        message = api_types.Message(player=SERVER_NAME, text=f'{player_name} joined.')
+
+        emit('CHAT', message.model_dump(), to=game_id, include_self=False)
         emit('PLAYERS', players_snapshot, to=game_id, include_self=False)
         eventlet.spawn(notify_new_join, sid, game_id)
         eventlet.spawn(update_lobby_service, game_id)
@@ -130,7 +133,7 @@ def CHAT(player: str, text: str):
     emit('CHAT', {'player': player, 'text': text}, to=room)
 
 @socketio.event
-def ACTION(choice: str):
+def ACTION(choice: str, callback: callable):
     with connections_lock:
         player_name, game_id = connections[request.sid]
 
@@ -141,6 +144,7 @@ def ACTION(choice: str):
         game = games[game_id]
         if player_name != game.get_active_player():
             print(f"Player {player_name} tried to go out of turn")
+            callback({status})
             return
         
         if choice not in [member.name for member in EventType]:

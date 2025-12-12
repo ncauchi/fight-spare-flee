@@ -21,9 +21,9 @@ class Monster:
 class Player:
     name: str
     lobby_ready: bool
-    session: str
+    sid: str
     coins: int
-    itmes: list[Item]
+    items: list[Item]
     captured_stars: list[int]
     health: int
 
