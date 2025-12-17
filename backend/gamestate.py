@@ -1,6 +1,7 @@
 from typing import Literal, get_args, Callable
 from enum import Enum, auto
 import random
+import api_wrapper
 
 
 class Item:
@@ -32,23 +33,21 @@ class Player:
         self.sid = sid
         self.lobby_ready = False
         self.coins = 0
-        self.itmes = []
+        self.items = []
         self.captured_stars = []
         self.health = 4
 
     def get_status_hand(self):
-        return {
-            "items": [{'name': item.name} for item in self.itmes],
-        }
+        return [api_wrapper.ItemInfo(name=item.name) for item in self.items]
     
     def get_status_public(self):
-        return {
-            "name": self.name, 
-            "ready": self.lobby_ready,
-            "coins": self.coins,
-            "num_items": len(self.itmes),
-            "health": self.health,
-        }
+        return api_wrapper.PlayerInfo(
+            name = self.name,
+            ready=self.lobby_ready,
+            coins=self.coins,
+            num_items=len(self.items),
+            health=self.health
+        )
 
 
 class EventType(Enum):
@@ -145,7 +144,7 @@ class GameState:
     _turn_order: list[str]
     _event_bus = EventBus
     players: dict[str, Player] #player_name -> Player
-    status: Literal["in_lobby", "in_game", "ended"]
+    status: api_wrapper.GameStatus
 
     #Turn
     _active_player: int
@@ -162,7 +161,7 @@ class GameState:
         self._owner = owner
         self._max_players = max_players
         self.players = {}
-        self.status = "in_lobby"
+        self.status = api_wrapper.GameStatus.LOBBY
     
     def get_status_lobby(self):
         """
@@ -170,7 +169,7 @@ class GameState:
         """
         return {
             "num_players": len(self.players.keys()),
-            "status": self.status
+            "status": self.status.name
         }
     
     def get_status_players(self):
@@ -207,7 +206,7 @@ class GameState:
         '''
         starts the game
         '''
-        self.status = "in_game"
+        self.status = api_wrapper.GameStatus.GAME
         order = [p for p in self.players.keys()]
         self._turn_order = order
         self._active_player = 0
@@ -289,11 +288,11 @@ class GameState:
 
         self.turn_phase = TurnPhase.CHOOSING_ACTION
 
-    def get_active_player(self) -> str:
-        return self._turn_order[self._active_player]
+    def get_active_player(self) -> str | None:
+        return self._turn_order[self._active_player] if self.status == api_wrapper.GameStatus.GAME else None
     
     def get_active_player_obj(self) -> Player:
-        return self.players[self._turn_order[self._active_player]]
+        return self.players[self._turn_order[self._active_player]] if self.status == api_wrapper.GameStatus.GAME else None
     
     def __init_deck(self):
         #TODO update
