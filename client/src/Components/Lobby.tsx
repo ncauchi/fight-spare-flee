@@ -1,30 +1,34 @@
 import { Spinner, Stack, Button } from "react-bootstrap";
 import { usePlayerName } from "./NameContext";
-import { useGameState, type Player } from "./Game";
-import { useSocketEmit } from "./SocketContext";
-import { useGameSocket } from "./SocketContext";
+import { useGameState, useAPI } from "./Game";
 import { useState } from "react";
 import PlayerBox from "./PlayerBox";
 import ChatWindow from "./ChatWindow";
+import { type PlayerInfo } from "../api_wrapper";
 
 function Lobby() {
   const [ready, setReady] = useState(false);
   const gameState = useGameState();
-  const { connected } = useGameSocket();
   const playerName = usePlayerName();
-  const emit = useSocketEmit();
+  const api = useAPI();
+
+  if (!gameState || !gameState.connected || !api) {
+    console.log("GameState:", gameState);
+    console.log("API obj: ", api);
+    return <Spinner></Spinner>;
+  }
 
   const handleReady = () => {
     const new_ready = !ready;
     setReady(new_ready);
-    emit("LOBBY_READY", new_ready);
+    api.requestSetLobbyReady(new_ready);
   };
 
   const handleStartGame = () => {
-    emit("START_GAME");
+    api.requestStartGame();
   };
 
-  const createPlayerBox = (player: Player, idx: number) => {
+  const createPlayerBox = (player: PlayerInfo, idx: number) => {
     if (!gameState) {
       return <div />;
     }
@@ -42,12 +46,9 @@ function Lobby() {
     );
   };
 
-  if (!connected || !gameState) return <Spinner></Spinner>;
-
   return (
     <>
       <h1 className="mb-2">{gameState.game_name}</h1>
-      <p className="mb-4">Connected: {connected ? "Yes" : "No"}</p>
       <Stack direction="horizontal" gap={4}>
         <Stack className="my-auto">
           {gameState.players.map(createPlayerBox)}

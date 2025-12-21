@@ -254,7 +254,6 @@ components:
           items:
             $ref: "#/components/schemas/Player"
 
-    #decapricated
     ChatEvent:
       type: object
       description: "Event when a chat is sent to everyone"

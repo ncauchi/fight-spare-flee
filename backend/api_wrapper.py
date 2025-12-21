@@ -17,6 +17,13 @@ class GameStatus(Enum):
     GAME = "GAME"
     ENDED = "END"
 
+class TurnPhase(Enum):
+    CHOOSING_ACTION = "CHOOSING_ACTION"
+    IN_COMBAT = "IN_COMBAT"
+    SHOPPING = "SHOPPING"
+    USING_SPECIAL = "USING_SPECIAL"
+    TURN_ENDED = "TURN_ENDED"
+
 
 # Shared Object Models
 
@@ -147,3 +154,7 @@ class Fsf_api():
     def emit_change_turn_event(self, to: str, new_active: str):
         """Emit CHANGE_TURN event to signal active player change."""
         self.server.emit("CHANGE_TURN", new_active, to=to)
+
+    def emit_update_turn_phase(self, to: str, phase: TurnPhase):
+        """Emit CHANGE_TURN event to signal active player change."""
+        self.server.emit("TURN_PHASE", phase.name, to=to)

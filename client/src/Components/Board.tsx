@@ -1,33 +1,35 @@
 import "./Board.css";
 import ChatWindow from "./ChatWindow";
-import { type GameState, type Player } from "./Game";
-import { useGameState } from "./Game";
+import { type GameState, useGameState, useAPI } from "./Game";
 import { Spinner, Button, Stack } from "react-bootstrap";
 import { useState } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
 import ItemCard from "./ItemCard";
-import { useSocketEmit } from "./SocketContext";
 
 function Board() {
   const gameState = useGameState();
+  const api = useAPI();
+
+  if (!api || !gameState) {
+    return <Spinner></Spinner>;
+  }
+
   const [flipped, setFlipped] = useState(false);
   const playerName = usePlayerName();
   const opponents = gameState?.players.filter((p) => {
     return p.name != playerName;
   });
   const myTurn = gameState?.active_player === playerName;
-  const emit = useSocketEmit();
 
   const handleFlip = () => {
     setFlipped(!flipped);
   };
 
   const handleNextTurn = () => {
-    emit("END_TURN");
+    api.requestEndTurn();
   };
 
-  if (!gameState) return <Spinner></Spinner>;
   return (
     <div className="game-board">
       <div className={`card ${flipped ? "flipped" : ""}`}>

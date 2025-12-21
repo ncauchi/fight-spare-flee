@@ -125,12 +125,7 @@ class EventBus:
 
 
 
-class TurnPhase(Enum):
-    CHOOSING_ACTION = auto()
-    IN_COMBAT = auto()
-    SHOPPING = auto()
-    USING_SPECIAL = auto()
-    TURN_ENDED = auto()
+
 
 class GameState:
     '''
@@ -148,7 +143,7 @@ class GameState:
 
     #Turn
     _active_player: int
-    turn_phase: TurnPhase
+    turn_phase: api_wrapper.TurnPhase
 
     #Board
     deck: list[Monster]
@@ -193,7 +188,7 @@ class GameState:
             },
         }
 
-        if self.turn_phase == TurnPhase.IN_COMBAT:
+        if self.turn_phase == api_wrapper.TurnPhase.IN_COMBAT:
             visible_monsters = [{'name': monster.name, 'stars': monster.stars} for monster, visible in self.fsf_monsters if visible]
             flipped_monsters = [{'stars': monster.stars} for monster, visible in self.fsf_monsters if not visible]
 
@@ -211,7 +206,7 @@ class GameState:
         self._turn_order = order
         self._active_player = 0
         self._event_bus = EventBus()
-        self.turn_phase = TurnPhase.CHOOSING_ACTION
+        self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
         self.__init_shop()
         self.__init_deck()
 
@@ -220,7 +215,7 @@ class GameState:
         '''
         returns the amount of coins gained
         '''
-        if self.turn_phase != TurnPhase.CHOOSING_ACTION:
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
             print("Tried to take coins on invalid turn step")
             return
         
@@ -228,11 +223,11 @@ class GameState:
         self._event_bus.emit(event=coins_event)
 
         self.players[self.get_active_player()].coins += coins_event.amount_to_take
-        self.turn_phase = TurnPhase.TURN_ENDED
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         return coins_event.amount_to_take
 
     def shop_items(self) -> Item:
-        if self.turn_phase != TurnPhase.CHOOSING_ACTION or self.turn_phase != TurnPhase.SHOPPING:
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION or self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
             print("Tried to take shop for items on invalid turn step")
             return None
         player = self.get_active_player_obj()
@@ -247,12 +242,12 @@ class GameState:
         shop_event = BuyItemEvent(self.shop)
         player.coins -= 2
         self._event_bus.emit(shop_event)
-        self.turn_phase = TurnPhase.TURN_ENDED if player.coins < 2 else TurnPhase.SHOPPING
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
 
         return shop_event.item
 
     def fsf(self) -> None:
-        if self.turn_phase != TurnPhase.CHOOSING_ACTION:
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
             print("Tried to fsf on invalid turn step")
             return
         
@@ -260,25 +255,25 @@ class GameState:
         self._event_bus.emit(fsf_event)
         self.fsf_monsters = [(monster, False) for monster in fsf_event.monster_results]
         
-        self.turn_phase = TurnPhase.IN_COMBAT
+        self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
         return
         
     def fsf_fight(self):
-        if self.turn_phase != TurnPhase.IN_COMBAT:
+        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
             print("Tried to fight but turn phase is not 'in combat' ")
-        self.turn_phase = TurnPhase.TURN_ENDED
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         pass
 
     def fsf_spare(self):
-        if self.turn_phase != TurnPhase.IN_COMBAT:
+        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
             print("Tried to fight but turn phase is not 'in combat' ")
-        self.turn_phase = TurnPhase.TURN_ENDED
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         pass
         
     def fsf_flee(self):
-        if self.turn_phase != TurnPhase.IN_COMBAT:
+        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
             print("Tried to fight but turn phase is not 'in combat' ")
-        self.turn_phase = TurnPhase.TURN_ENDED
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         pass
 
     def advance_active_player(self) -> None:
@@ -286,7 +281,7 @@ class GameState:
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
 
-        self.turn_phase = TurnPhase.CHOOSING_ACTION
+        self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
 
     def get_active_player(self) -> str | None:
         return self._turn_order[self._active_player] if self.status == api_wrapper.GameStatus.GAME else None

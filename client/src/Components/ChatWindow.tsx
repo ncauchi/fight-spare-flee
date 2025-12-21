@@ -1,8 +1,7 @@
-import { type Message } from "./Game";
+import { useAPI } from "./Game";
 import { ListGroup, Form, Stack, Button } from "react-bootstrap";
-import { useSocketEmit } from "./SocketContext";
 import { useState, useRef, useEffect } from "react";
-import { usePlayerName } from "./NameContext";
+import { type Message } from "../api_wrapper";
 
 interface Props {
   messages: Message[];
@@ -11,14 +10,13 @@ interface Props {
 }
 
 function ChatWindow({ gameName, gameOwner, messages }: Props) {
-  const emit = useSocketEmit();
+  const api = useAPI();
   const [message, setMessage] = useState("");
-  const playerName = usePlayerName();
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const handleSendChat = () => {
     if (message) {
-      emit("CHAT", playerName, message);
+      api.requestSendChat(message);
       setMessage("");
     }
   };
@@ -32,9 +30,9 @@ function ChatWindow({ gameName, gameOwner, messages }: Props) {
       <ListGroup className="overflow-y-auto overflow-x-hidden m-2">
         {messages.map((message, index) => (
           <ListGroup.Item key={index}>
-            {message.player == "SERVER123" ? gameName : message.player}
-            {message.player == "SERVER123" && <span style={{ color: "#D2691E" }}>{"(Server)"}</span>}
-            {message.player == gameOwner && <span style={{ color: "blue" }}>{"(Owner)"}</span>}: {message.text}
+            {message.player_name == "SERVER123" ? gameName : message.player_name}
+            {message.player_name == "SERVER123" && <span style={{ color: "#D2691E" }}>{"(Server)"}</span>}
+            {message.player_name == gameOwner && <span style={{ color: "blue" }}>{"(Owner)"}</span>}: {message.text}
           </ListGroup.Item>
         ))}
         <div ref={chatEndRef} />
