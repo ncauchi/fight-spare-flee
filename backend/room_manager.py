@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from game_meta import GameMetadata
 import requests
+import api_wrapper as api
 
 
 app = Flask(__name__)
@@ -72,9 +73,9 @@ def update_game(game_id):
         return jsonify({"error": "missing required fields"})
 
     game.num_players = data["num_players"]
-    game.status = data["status"]
+    game.status = api.GameStatus[data["status"]]
 
-    if game.status == "ended":
+    if game.status == api.GameStatus.ENDED:
         print(f'Deleting game: "{games[game.id].name}"')
         del games[game.id]
     else:

@@ -4,11 +4,10 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
-from gamestate import GameState, Player, TurnPhase, EventType
+from gamestate import GameState, Player, EventType
 import threading
 import requests
 from test import get_local_ip
-import api_wrapper
 from api_wrapper import *
 
 app = Flask(__name__)
@@ -22,7 +21,7 @@ socketio = SocketIO(
 
 fsf_api = Fsf_api(socketio)
 
-ROOMS_API_URL = "http://localhost:5000"
+ROOMS_API_URL = "http://127.0.0.1:5000"
 SERVER_NAME = "SERVER123"
 
 connections : dict[str, tuple[str, str]] = {} # player_name, game_id
@@ -44,6 +43,12 @@ def test_disconnect():
 @fsf_api.event_handler(JoinRequest)
 def JOIN(request_data: JoinRequest, sid):
     player_name, game_id = request_data.player_name, request_data.game_id
+
+    if game_id not in games:
+        disconnect()
+        print(f'Player: "{player_name}" tried to game that does not exist')
+        return
+
     lock = game_locks[game_id]
     players_snapshot = []
     new_join = True
@@ -266,6 +271,20 @@ def create_game(game_id):
     print(f'"{new_game._owner}" created game: "{new_game._name}" with id: "{new_game._id}"')
     return jsonify("response", "Sucess"), 201
 
+def player_from_sid(sid: Any):
+    with connections_lock:
+        player_name, game_id = connections[sid]
+
+    with games_lock:
+        if game_id not in games:
+            raise IndexError("Game associated with sid does not exist or was deleted")
+        
+    with game_locks[game_id]:
+        if player_name not in games[game_id].players:
+            raise IndexError("Player name associated with sid does not exist or was deleted")
+
+    return player_name, game_id
+
 def update_lobby_service(id):
 
     if id not in game_locks or id not in games:
@@ -283,6 +302,8 @@ def update_lobby_service(id):
         )
     if response.status_code != 200:
         print(f"Failed to update game {name}: {response.status_code}")
+    else:
+        print(f'Updated game "{name}" to {status}.')
 
 
 if __name__ == "__main__":

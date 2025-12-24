@@ -4,12 +4,13 @@ import Button from "react-bootstrap/Button";
 import Stack from "react-bootstrap/Stack";
 import Spinner from "react-bootstrap/Spinner";
 import configData from "../config.json";
+import { type GameStatus } from "../api_wrapper";
 
 interface Room {
   id: string;
   name: string;
   owner: string;
-  status: string;
+  status: GameStatus;
   num_players: number;
   max_players: number;
 }
@@ -58,11 +59,9 @@ function ServerBrowser() {
         <h2 className="m-auto">{room.name}</h2>
         <div className="vr" />
         <h3
-          className={`m-auto ${
-            room.status === "in_lobby" ? "text-success" : room.status === "in_game" ? "text-warning" : ""
-          }`}
+          className={`m-auto ${room.status == "LOBBY" ? "text-success" : room.status == "GAME" ? "text-warning" : ""}`}
         >
-          {room.status === "in_lobby" ? "Lobby" : "Started"}
+          {room.status == "LOBBY" ? "Lobby" : "Started"}
         </h3>
         <div className="vr" />
         <h3 className="m-auto">

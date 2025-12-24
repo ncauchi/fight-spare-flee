@@ -1,9 +1,9 @@
-import { type Player } from "./Game";
+import { type PlayerInfo } from "../api_wrapper";
 import { Stack } from "react-bootstrap";
 import { usePlayerName } from "./NameContext";
 
 interface Props {
-  player: Player;
+  player: PlayerInfo;
 }
 function PlayerBox({ player }: Props) {
   const name = player.name;

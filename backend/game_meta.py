@@ -1,5 +1,5 @@
 import uuid
-
+import api_wrapper as api
 
 class GameMetadata:
     """
@@ -10,7 +10,7 @@ class GameMetadata:
     owner : str
     num_players : int
     max_players : int
-    status : str # in_lobby or in_game
+    status : api.GameStatus
     ws : str
 
 
@@ -22,7 +22,7 @@ class GameMetadata:
         self.owner = owner
         self.num_players = 0
         self.max_players = max_players
-        self.status = "in_lobby"
+        self.status = api.GameStatus.LOBBY
 
 
     def to_dict(self):
@@ -30,7 +30,7 @@ class GameMetadata:
             "id": self.id,
             "name": self.name,
             "owner": self.owner,
-            "status": self.status,
+            "status": self.status.name,
             "num_players": self.num_players,
             "max_players": self.max_players,
         }
