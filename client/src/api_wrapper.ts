@@ -15,6 +15,7 @@ export type TurnPhase = "CHOOSING_ACTION" | "IN_COMBAT" | "SHOPPING" | "USING_SP
 // Shared Models
 export interface ItemInfo {
   name: string;
+  text: string;
 }
 
 export interface Message {

@@ -4,6 +4,7 @@ node_modules/
 htmlcov/
 .coverage
 .pytest_cache/
+.mypy_cache/
 
 # Environment variables
 .env

@@ -29,6 +29,7 @@ class TurnPhase(Enum):
 
 class ItemInfo(BaseModel):
     name: str
+    text: str
 
 class Message(BaseModel):
     player_name: str
@@ -51,10 +52,6 @@ class PlayerInfo(BaseModel):
     coins: int
     num_items: int
     health: int
-
-class PlayerHandInfo(BaseModel):
-    items: List[ItemInfo]
-
 
 
 # Client Request Models (Client → Server)

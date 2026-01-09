@@ -37,7 +37,14 @@ def test_game():
     game.advance_active_player()
     game.active_player_take_coins()
     game.advance_active_player()
-    game.active_player_buy_item()
+    item = game.active_player_buy_item()
+    assert item != None
+
+    players = game.get_status_players()
+    assert game.get_active_player() == "bob"
+    assert game.get_active_player_obj().get_status_hand() == [ItemInfo(name="dev_item", text="jajaja")]
+    assert players[0] == PlayerInfo(name='bob', ready=False, coins=0, num_items=1, health=4)
+    assert players[1] == PlayerInfo(name='god', ready=False, coins=2, num_items=0, health=4)
 
 
     

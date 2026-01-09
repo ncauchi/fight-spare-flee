@@ -1,14 +1,19 @@
 from typing import Literal, get_args, Callable
 from enum import Enum, auto
 import random
+import os
 import api_wrapper
 from warnings import deprecated
+import yaml
 
 
 class Item:
     name: str
+    text: str
 
-    def __init__(self):
+    def __init__(self, name: str = "", text: str = ""):
+        self.name = name
+        self.text = text
         pass
 
 class Monster:
@@ -39,7 +44,7 @@ class Player:
         self.health = 4
 
     def get_status_hand(self):
-        return [api_wrapper.ItemInfo(name=item.name) for item in self.items]
+        return [api_wrapper.ItemInfo(name=item.name, text=item.text) for item in self.items]
     
     def get_status_public(self):
         return api_wrapper.PlayerInfo(
@@ -132,11 +137,15 @@ class GameState:
     '''
     represents all the data and logic in a game of fight spare flee
     '''
-    #
+    #Config
     _id: str
     _name: str
     _owner: str
     _max_players: int
+    _allowed_items : list[str]
+    _allowed_monsters: list[str]
+
+
     _turn_order: list[str]
     _event_bus = EventBus
     players: dict[str, Player] #player_name -> Player
@@ -151,13 +160,19 @@ class GameState:
     shop: list[Item]
     fsf_monsters: list[tuple[Monster, bool]] # Monster, is_flipped
 
-    def __init__(self, id : str, name : str, owner : str, max_players: int):
+    def __init__(self, id : str, name : str, owner : str, max_players: int, allowed_items: Literal["*"] | list[str] = "*", allowed_monsters: Literal["*"] | list[str] = "*"):
         self._id = id
         self._name = name
         self._owner = owner
         self._max_players = max_players
         self.players = {}
         self.status = api_wrapper.GameStatus.LOBBY
+
+        self._allowed_items = allowed_items
+        self._allowed_monsters = allowed_monsters
+
+
+
     
     def get_status_lobby(self):
         """
@@ -170,13 +185,13 @@ class GameState:
     
     def get_status_players(self):
         """
-        Returns public players info in JSON format
+        Returns api public players info in JSON format
         """
         return [player.get_status_public() for player in self.players.values()]
 
     def get_status_board(self):
         """
-        Returns board status in JSON format
+        Returns api board status in JSON format
         """
 
         ret = {
@@ -249,15 +264,15 @@ class GameState:
         return coins_event.amount_to_take
     
     def active_player_buy_item(self) -> Item:
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION or self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
-            print("Tried to take shop for items on invalid turn step")
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION and self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
+            print(f'Tried to buy an item on invalid turn step "{self.turn_phase}"')
             return None
         player = self.get_active_player_obj()
         if player.coins < 2:
             print("Player does not have enough coins to buy")
             return None
 
-        if player.itmes > 4:
+        if len(player.items) > 4:
             print("Player has too many items to buy more")
             return None
         
@@ -344,9 +359,21 @@ class GameState:
         self.deck = [m]*99
         
     def __init_shop(self):
-        #TODO update
-        
-        self.shop = []
+        library_path = os.path.join(os.path.dirname(__file__), 'library.yaml')
+        with open(library_path, 'r') as file:
+            try:
+                data = yaml.load(file, yaml.Loader)
+                self.shop = [Item()]*40
+                for i in range(40):
+                    if self._allowed_items == "*":
+                        item_name = random.choice(list(data["items"].keys()))
+                    else:
+                        item_name = random.choice(self._allowed_items)
+                    cur_item = data["items"][item_name]
+                    self.shop[i] = Item(name=item_name, text = cur_item["text"])
+
+            except yaml.YAMLError as exc:
+                print(exc)
     
 
     
