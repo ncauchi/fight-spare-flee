@@ -2,6 +2,7 @@ from typing import Literal, get_args, Callable
 from enum import Enum, auto
 import random
 import api_wrapper
+from warnings import deprecated
 
 
 class Item:
@@ -196,7 +197,13 @@ class GameState:
 
         return ret
     
-    
+    def add_player(self, player_name, sid) -> None:
+        self.players[player_name] = Player(name=player_name, sid=sid)
+
+    def set_player_lobby_ready(self, player_name, ready) -> None:
+        player = self.players[player_name]
+        player.lobby_ready = ready
+
     def start(self) -> None:
         '''
         starts the game
@@ -210,7 +217,22 @@ class GameState:
         self.__init_shop()
         self.__init_deck()
 
+    def active_player_take_coins(self) -> int:
+        '''
+        returns the amount of coins gained
+        '''
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
+            print("Tried to take coins on invalid turn step")
+            return
         
+        coins_event = TakeCoinEvent()
+        self._event_bus.emit(event=coins_event)
+
+        self.get_active_player_obj().coins += coins_event.amount_to_take
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+        return coins_event.amount_to_take
+
+    @deprecated("Use active_player_take_coins instead")
     def take_coins(self) -> int:
         '''
         returns the amount of coins gained
@@ -225,7 +247,29 @@ class GameState:
         self.players[self.get_active_player()].coins += coins_event.amount_to_take
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         return coins_event.amount_to_take
+    
+    def active_player_buy_item(self) -> Item:
+        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION or self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
+            print("Tried to take shop for items on invalid turn step")
+            return None
+        player = self.get_active_player_obj()
+        if player.coins < 2:
+            print("Player does not have enough coins to buy")
+            return None
 
+        if player.itmes > 4:
+            print("Player has too many items to buy more")
+            return None
+        
+        shop_event = BuyItemEvent(self.shop)
+        player.coins -= 2
+        self._event_bus.emit(shop_event)
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
+        player.items.append(shop_event.item)
+
+        return shop_event.item
+
+    @deprecated("Use active_player_buy_item instead")
     def shop_items(self) -> Item:
         if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION or self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
             print("Tried to take shop for items on invalid turn step")
@@ -277,6 +321,9 @@ class GameState:
         pass
 
     def advance_active_player(self) -> None:
+        '''
+        advances to next turn
+        '''
         curr = self._active_player
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player

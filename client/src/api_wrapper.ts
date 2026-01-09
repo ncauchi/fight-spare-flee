@@ -104,9 +104,9 @@ export class GameAPI {
     this.socket.emit("CHAT", req);
   }
 
-  sendAction(choice: PlayerActionChoice, aknowledgement: (val: ActionResponse) => void) {
+  requestSendAction(choice: PlayerActionChoice) {
     const req: ActionRequest = { choice: choice };
-    this.socket.emit("ACTION", req, aknowledgement);
+    this.socket.emit("ACTION", req);
   }
 
   // Server → Client event listener
@@ -135,8 +135,13 @@ export class GameAPI {
     cleanup?.push(() => this.socket.off("CHANGE_TURN", handler));
   }
 
-  onChangeTurnPhase(handler: (phase: TurnPhase) => void, cleanup?: any[]) {
-    this.socket.on("TURN_PHASE", handler);
-    cleanup?.push(() => this.socket.off("CHANGE_TURN", handler));
+  onActionResponse(handler: (action: PlayerActionChoice, coins_change: number, monsters: MonsterInfo[]) => void, cleanup?: any[]) {
+    this.socket.on("ACTION_RESPONSE", handler);
+    cleanup?.push(() => this.socket.off("ACTION_RESPONSE", handler));
+  }
+
+  onHandUpdate(handler: (items: ItemInfo[]) => void, cleanup?: any[]) {
+    this.socket.on("ITEMS", handler);
+    cleanup?.push(() => this.socket.off("ITEMS", handler));
   }
 }

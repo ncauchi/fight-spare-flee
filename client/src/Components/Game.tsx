@@ -15,6 +15,8 @@ export interface GameState {
   status: api.GameStatus;
   active_player?: string;
   turn_phase?: api.TurnPhase;
+  items?: api.ItemInfo[];
+  monsters?: api.MonsterInfo[];
 }
 
 const GameStateContext = createContext<GameState | undefined>(undefined);
@@ -75,7 +77,9 @@ function Game() {
 
     apiRef.current.onChangeTurn(handleTurnChange, cleanup);
 
-    apiRef.current.onChangeTurnPhase(handleTurnPhaseChange, cleanup);
+    apiRef.current.onActionResponse(handleActionResponse, cleanup);
+
+    apiRef.current.onHandUpdate(handleHandUpdate, cleanup);
 
     return () => {
       // Remove all event listeners
@@ -135,31 +139,63 @@ function Game() {
       return {
         ...prevState,
         active_player: new_player,
+        turn_phase: new_player == playerName ? "CHOOSING_ACTION" : "TURN_ENDED",
       };
     });
   };
 
-  const handleTurnPhaseChange = (new_phase: api.TurnPhase) => {
-    console.log("Turn phase: ", new_phase);
-    setGameState((prevState) => {
-      if (!prevState) return undefined;
-      return {
-        ...prevState,
-        turn_phase: new_phase,
-      };
-    });
+  const handleActionResponse = (
+    new_phase: api.PlayerActionChoice,
+    coins_change: number,
+    monsters: api.MonsterInfo[]
+  ) => {
+    if (new_phase == "COINS") {
+      console.log(`Picked up ${coins_change} coins`);
+    } else if (new_phase == "SHOP") {
+      console.log(`Bought item for ${coins_change * -1} coins.`);
+      setGameState((prevState) => {
+        if (!prevState) return undefined;
+        return {
+          ...prevState,
+          turn_phase: "SHOPPING",
+        };
+      });
+    } else if (new_phase == "FSF") {
+      console.log(`FSFing ${monsters}`);
+      setGameState((prevState) => {
+        if (!prevState) return undefined;
+        return {
+          ...prevState,
+          turn_phase: "IN_COMBAT",
+          monsters: monsters,
+        };
+      });
+    }
   };
 
   const handleStartGame = (first_player: string) => {
     console.log("Starting Game...");
+    const firstName = first_player;
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
         ...prevState,
         active_player: first_player,
+        turn_phase: firstName == playerName ? "CHOOSING_ACTION" : "TURN_ENDED",
       };
     });
     navigate(`/play/${gameId}/board`);
+  };
+
+  const handleHandUpdate = (items: api.ItemInfo[]) => {
+    console.log("Items update: ", items);
+    setGameState((prevState) => {
+      if (!prevState) return undefined;
+      return {
+        ...prevState,
+        items: items,
+      };
+    });
   };
 
   return (

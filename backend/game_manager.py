@@ -66,7 +66,8 @@ def JOIN(request_data: JoinRequest, sid):
             old_sid = game.players[player_name]
             disconnect(sid = old_sid)
             with connections_lock:
-                del connections[old_sid]
+                if old_sid in connections:
+                    del connections[old_sid]
             new_join = False
 
         print("Player: ",player_name, " joined game: ", game_id)
@@ -156,8 +157,7 @@ def CHAT(data: ChatRequest, sid):
 
 @fsf_api.event_handler(ActionRequest)
 def ACTION(data: ActionRequest, sid):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+    player_name, game_id = player_from_sid(sid)
     choice = data.choice
     res = []
     players_change = False
@@ -166,30 +166,31 @@ def ACTION(data: ActionRequest, sid):
         game = games[game_id]
         if player_name != game.get_active_player():
             print(f"Player {player_name} tried to go out of turn")
-            callback({status})
             return
         
         if choice not in [member.name for member in EventType]:
             print(f"Player {player_name} tried to do invalid action {choice}")
             return
 
-        action = EventType(choice)
+        action = EventType[choice]
 
         if game.turn_phase != TurnPhase.CHOOSING_ACTION and not (game.turn_phase == TurnPhase.SHOPPING and action == EventType.SHOP):
             print(f"Player {player_name} tried to do action in wrong order")
             return
 
         if action == EventType.COINS:
-            game.take_coins()
+            gain = game.take_coins()
+            res.append(lambda: fsf_api.emit_action_response(sid, PlayerActionChoice.COINS, gain, []))
             players_change = True
             
         elif action == EventType.SHOP:
-            game.shop_items()
-            res.append(lambda: emit('HAND', game.get_active_player_obj().get_status_hand(), to=sid))
+            item_gain = game.shop_items()
+            res.append(lambda: fsf_api.emit_action_response(sid, PlayerActionChoice.SHOP, -2, []))
+            res.append(lambda: fsf_api.emit_hand_event(sid, item_gain))
             players_change = True
 
         elif action == EventType.FSF:
-            game.fsf()
+            monsters = game.fsf()
             board_change = True
 
 

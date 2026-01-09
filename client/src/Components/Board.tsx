@@ -5,7 +5,8 @@ import { Spinner, Button, Stack } from "react-bootstrap";
 import { useState } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
-import ItemCard from "./ItemCard";
+import ChoosingActionBox from "./ChoosingActionBox";
+import BoardPlayerHand from "./BoardPlayerHand";
 
 function Board() {
   const gameState = useGameState();
@@ -53,10 +54,8 @@ function Board() {
           <h3>Next Turn</h3>
         </Button>
       )}
-      <Stack direction="horizontal" gap={1} className="item-card-box">
-        <ItemCard />
-        <ItemCard />
-      </Stack>
+      <BoardPlayerHand />
+      {gameState.turn_phase == "CHOOSING_ACTION" && <ChoosingActionBox />}
     </div>
   );
 }

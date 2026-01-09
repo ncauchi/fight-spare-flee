@@ -155,6 +155,8 @@ class Fsf_api():
         """Emit CHANGE_TURN event to signal active player change."""
         self.server.emit("CHANGE_TURN", new_active, to=to)
 
-    def emit_update_turn_phase(self, to: str, phase: TurnPhase):
-        """Emit CHANGE_TURN event to signal active player change."""
-        self.server.emit("TURN_PHASE", phase.name, to=to)
+    def emit_action_response(self, to: str, action: PlayerActionChoice, coins_gain: int = 0, monsters : List[MonsterInfo] = []):
+        self.server.emit("ACTION_RESPONSE", action.name, coins_gain, monsters, to=to)
+
+    def emit_hand_event(self, to: str, items: List[ItemInfo]):
+        self.server.emit("ITEMS", items, to=to)

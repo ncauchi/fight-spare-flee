@@ -1,5 +1,5 @@
 import { useAPI } from "./Game";
-import { ListGroup, Form, Stack, Button } from "react-bootstrap";
+import { ListGroup, Form, Stack, Button, Spinner } from "react-bootstrap";
 import { useState, useRef, useEffect } from "react";
 import { type Message } from "../api_wrapper";
 
@@ -14,6 +14,9 @@ function ChatWindow({ gameName, gameOwner, messages }: Props) {
   const [message, setMessage] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  if (!api) {
+    return <Spinner></Spinner>;
+  }
   const handleSendChat = () => {
     if (message) {
       api.requestSendChat(message);
