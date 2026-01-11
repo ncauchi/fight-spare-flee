@@ -1,4 +1,14 @@
 items:
   dev_item:
-    text: jajaja
+    text: jajaja 5dmg
+    effect:
+      id: DIRECT_DAMAGE
+      params:
+        amount: 5
 monsters:
+  dev_monster:
+    stars: 1
+    health: 1
+    spare: 1
+    fight_coins: 3
+    flee_coins: -1

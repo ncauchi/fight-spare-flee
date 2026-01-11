@@ -42,10 +42,42 @@ def test_game():
 
     players = game.get_status_players()
     assert game.get_active_player() == "bob"
-    assert game.get_active_player_obj().get_status_hand() == [ItemInfo(name="dev_item", text="jajaja")]
-    assert players[0] == PlayerInfo(name='bob', ready=False, coins=0, num_items=1, health=4)
-    assert players[1] == PlayerInfo(name='god', ready=False, coins=2, num_items=0, health=4)
+    assert game.get_active_player_obj().get_status_hand() == [ItemInfo(name="dev_item", text="jajaja 5dmg", target_type=ItemTarget.MONSTER)]
+    assert players[0] == PlayerInfo(name='bob', captured_stars=[], ready=False, coins=0, num_items=1, health=4)
+    assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=4)
 
+    game.advance_active_player()
+    game.advance_active_player()
+    game.active_player_fsf()
+    monsters = game.get_status_fsf()
+
+    assert game.get_active_player() == "bob"
+    assert len(monsters) == 3
+    assert monsters == [MonsterInfo(stars=1)]*3
+
+    game.fsf_select(0)
+    game.fsf_fight(0, 0)
+    players = game.get_status_players()
+    monsters = game.get_status_fsf()
+
+    assert players[0] == PlayerInfo(name='bob', captured_stars=[1], ready=False, coins=3, num_items=0, health=4)
+    assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=4)
+    assert game.fsf_monsters == []
+
+    game.advance_active_player()
+    assert game.get_active_player() == "god"
+    game.active_player_fsf()
+    monsters = game.get_status_fsf()
+    game.fsf_select(0)
+    game.fsf_fight(1, -1)
+    players = game.get_status_players()
+
+    assert players[0] == PlayerInfo(name='bob', captured_stars=[1], ready=False, coins=3, num_items=0, health=4)
+    assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=3)
+
+    
+
+    
 
     
 

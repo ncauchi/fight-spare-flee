@@ -24,12 +24,18 @@ class TurnPhase(Enum):
     USING_SPECIAL = "USING_SPECIAL"
     TURN_ENDED = "TURN_ENDED"
 
+class ItemTarget(Enum):
+    MONSTER = "MONSTER"
+    PLAYER = "PLAYER"
+    ITEM = "ITEM"
+    NONE = "NONE"
 
 # Shared Object Models
 
 class ItemInfo(BaseModel):
     name: str
     text: str
+    target_type: ItemTarget
 
 class Message(BaseModel):
     player_name: str
@@ -38,6 +44,12 @@ class Message(BaseModel):
 class MonsterInfo(BaseModel):
     name: Optional[str] = None
     stars: int
+    max_health: Optional[int] = None
+    health: Optional[int] = None
+    spare: Optional[int] = None
+    flee_coins: Optional[int] = None
+    fight_coins: Optional[int] = None
+
 
     @field_validator('stars')
     @classmethod
@@ -50,6 +62,7 @@ class PlayerInfo(BaseModel):
     name: str
     ready: bool
     coins: int
+    captured_stars: list[int]
     num_items: int
     health: int
 

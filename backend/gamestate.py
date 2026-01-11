@@ -1,28 +1,97 @@
-from typing import Literal, get_args, Callable
+from typing import Literal, get_args, Callable, Any
+import warnings
 from enum import Enum, auto
 import random
 import os
 import api_wrapper
 from warnings import deprecated
 import yaml
+from item_effects import EFFECT_REGISTRY
 
 
 class Item:
     name: str
     text: str
+    target_type: api_wrapper.ItemTarget = api_wrapper.ItemTarget.NONE
+    effect: Callable[[Any], Any] = None
+    params: dict[str, Any] = None
 
-    def __init__(self, name: str = "", text: str = ""):
+
+    def __init__(self, name: str = "", data: dict = None):
         self.name = name
-        self.text = text
-        pass
+        if not data:
+            self.text = ""
+        else:
+            self.text = data["text"]
+            
+            if "effect" in data:
+                target, effect = EFFECT_REGISTRY[data["effect"]["id"]]
+                self.effect = effect
+                self.params = data["effect"]["params"]
+                self.target_type = target
+
+    def activate(self, target: Player | Monster | Item | None = None):
+        type_mapping = {
+            api_wrapper.ItemTarget.PLAYER: Player,
+            api_wrapper.ItemTarget.MONSTER: Monster,
+            api_wrapper.ItemTarget.ITEM: Item,
+            api_wrapper.ItemTarget.NONE: type(None)
+        }
+
+        if not isinstance(target, type_mapping[self.target_type]):
+            raise TypeError(
+                f"Item '{self.name}' requires target of type {self.target_type.value}, "
+                f"but got {type(target).__name__}"
+            )
+        if self.effect:
+            self.effect(target, **self.params)
+
+    def get_api_status(self):
+        return api_wrapper.ItemInfo(name=self.name, text=self.text, target_type=self.target_type)
+
 
 class Monster:
     stars: int
     name: str
+    health: int
+    spare: int
+    visible: bool
+    flee_coins: int
+    fight_coins: int
+    max_health: int
 
-    def __init__(self):
-        self.stars = 1
-        self.name = "tmp"
+    def __init__(self, name: str = "", data: dict = None):
+        if not data:
+            return
+        req = ["stars", "health", "spare", "flee_coins", "fight_coins"]
+        if not all(field in data for field in req):
+            raise ValueError("Tried to initialize monster without all required fields")
+        self.name = name
+        self.stars = data["stars"]
+        self.visible = False
+        self.health = data["health"]
+        self.spare = data["spare"]
+        self.flee_coins = data["flee_coins"]
+        self.fight_coins = data["fight_coins"]
+        self.max_health = data["health"]
+
+    def get_api_status(self):
+        if self.visible:
+            return api_wrapper.MonsterInfo(
+                name = self.name,
+                stars=self.stars,
+                max_health=self.max_health,
+                health=self.health,
+                spare=self.spare,
+                flee_coins=self.flee_coins,
+                fight_coins=self.fight_coins,
+            )
+        else:
+            return api_wrapper.MonsterInfo(
+                stars=self.stars
+            )
+
+
 
 
 class Player:
@@ -43,8 +112,12 @@ class Player:
         self.captured_stars = []
         self.health = 4
 
+    def use_item(self, item_pos: int, target: Player | Monster | Item | None = None):
+        item = self.items.pop(item_pos)
+        item.activate(target=target)
+
     def get_status_hand(self):
-        return [api_wrapper.ItemInfo(name=item.name, text=item.text) for item in self.items]
+        return [item.get_api_status() for item in self.items]
     
     def get_status_public(self):
         return api_wrapper.PlayerInfo(
@@ -52,6 +125,7 @@ class Player:
             ready=self.lobby_ready,
             coins=self.coins,
             num_items=len(self.items),
+            captured_stars=self.captured_stars,
             health=self.health
         )
 
@@ -158,7 +232,7 @@ class GameState:
     #Board
     deck: list[Monster]
     shop: list[Item]
-    fsf_monsters: list[tuple[Monster, bool]] # Monster, is_flipped
+    fsf_monsters: list[Monster]
 
     def __init__(self, id : str, name : str, owner : str, max_players: int, allowed_items: Literal["*"] | list[str] = "*", allowed_monsters: Literal["*"] | list[str] = "*"):
         self._id = id
@@ -193,7 +267,7 @@ class GameState:
         """
         Returns api board status in JSON format
         """
-
+        #TODO update
         ret = {
             'deck': {
                 'size': len(self.deck),
@@ -211,6 +285,11 @@ class GameState:
             ret["monsters"] = {'visible': visible_monsters, 'flipped': flipped_monsters}
 
         return ret
+    
+    def get_status_fsf(self) -> list[api_wrapper.MonsterInfo]:
+        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
+            return None
+        return [mon.get_api_status() for mon in self.fsf_monsters]
     
     def add_player(self, player_name, sid) -> None:
         self.players[player_name] = Player(name=player_name, sid=sid)
@@ -305,23 +384,51 @@ class GameState:
 
         return shop_event.item
 
-    def fsf(self) -> None:
+    def active_player_fsf(self) -> None:
         if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
             print("Tried to fsf on invalid turn step")
             return
         
-        fsf_event = FsfEvent()
+        fsf_event = FsfEvent(self.deck)
         self._event_bus.emit(fsf_event)
-        self.fsf_monsters = [(monster, False) for monster in fsf_event.monster_results]
+        self.fsf_monsters = fsf_event.monster_results
         
         self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
         return
+    
+    def fsf_select(self, choice: int):
+        if choice < 0 or choice >= len(self.fsf_monsters):
+            raise ValueError("Invalid target for fsf")
+        mon_choice = self.fsf_monsters[choice]
+        if mon_choice.visible:
+            raise Warning("Selected already visible monster for fsf")
+        mon_choice.visible = True
         
-    def fsf_fight(self):
+    def fsf_fight(self, target: int, item: int) -> None:
+        """
+        use item on selected monster to try and lower its heatlh
+        """
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
             print("Tried to fight but turn phase is not 'in combat' ")
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        pass
+        
+        player = self.get_active_player_obj()
+        tar_mon = self.fsf_monsters[target]
+        if not tar_mon.visible:
+            warnings.warn("Fighting monster thats not flipped over")
+        if item < 0:
+            player.health -= 1
+            return
+
+        player.use_item(item_pos=item, target=tar_mon)
+        
+        if tar_mon.health < 1:
+            player.captured_stars.append(tar_mon.stars)
+            player.coins += tar_mon.fight_coins
+            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+            self.fsf_monsters = []
+        else:
+            pass
+
 
     def fsf_spare(self):
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
@@ -345,6 +452,9 @@ class GameState:
 
         self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
 
+    def _advance_turn_phase(self) -> None:
+        pass
+
     def get_active_player(self) -> str | None:
         return self._turn_order[self._active_player] if self.status == api_wrapper.GameStatus.GAME else None
     
@@ -352,11 +462,21 @@ class GameState:
         return self.players[self._turn_order[self._active_player]] if self.status == api_wrapper.GameStatus.GAME else None
     
     def __init_deck(self):
-        #TODO update
-        m = Monster()
-        m.name = "dev_monster"
-        m.stars = 2
-        self.deck = [m]*99
+        library_path = os.path.join(os.path.dirname(__file__), 'library.yaml')
+        with open(library_path, 'r') as file:
+            try:
+                data = yaml.load(file, yaml.Loader)
+                self.deck = [Monster()]*40
+                for i in range(40):
+                    if self._allowed_monsters == "*":
+                        mon_name = random.choice(list(data["monsters"].keys()))
+                    else:
+                        mon_name = random.choice(self._allowed_monsters)
+                    cur_mon: dict = data["monsters"][mon_name]
+                    self.deck[i] = Monster(name=mon_name, data=cur_mon)
+
+            except yaml.YAMLError as exc:
+                print(exc)
         
     def __init_shop(self):
         library_path = os.path.join(os.path.dirname(__file__), 'library.yaml')
@@ -370,7 +490,7 @@ class GameState:
                     else:
                         item_name = random.choice(self._allowed_items)
                     cur_item = data["items"][item_name]
-                    self.shop[i] = Item(name=item_name, text = cur_item["text"])
+                    self.shop[i] = Item(name=item_name, data=cur_item)
 
             except yaml.YAMLError as exc:
                 print(exc)
