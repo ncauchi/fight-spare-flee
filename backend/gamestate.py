@@ -7,6 +7,7 @@ import api_wrapper
 from warnings import deprecated
 import yaml
 from item_effects import EFFECT_REGISTRY
+from app_logging import AppLogger
 
 
 class Item:
@@ -218,6 +219,7 @@ class GameState:
     _max_players: int
     _allowed_items : list[str]
     _allowed_monsters: list[str]
+    _logger: AppLogger
 
 
     _turn_order: list[str]
@@ -241,6 +243,7 @@ class GameState:
         self._max_players = max_players
         self.players = {}
         self.status = api_wrapper.GameStatus.LOBBY
+        self._logger = AppLogger(name=f"game_{name}")
 
         self._allowed_items = allowed_items
         self._allowed_monsters = allowed_monsters
@@ -304,7 +307,7 @@ class GameState:
         returns the amount of coins gained
         '''
         if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
-            print("Tried to take coins on invalid turn step")
+            self._logger.error("tried to take coins on invalid turn phase")
             return
         
         coins_event = TakeCoinEvent()
@@ -312,35 +315,21 @@ class GameState:
 
         self.get_active_player_obj().coins += coins_event.amount_to_take
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+        self._logger.info(f'player {self.get_active_player()} took coins')
         return coins_event.amount_to_take
 
-    @deprecated("Use active_player_take_coins instead")
-    def take_coins(self) -> int:
-        '''
-        returns the amount of coins gained
-        '''
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
-            print("Tried to take coins on invalid turn step")
-            return
-        
-        coins_event = TakeCoinEvent()
-        self._event_bus.emit(event=coins_event)
-
-        self.players[self.get_active_player()].coins += coins_event.amount_to_take
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        return coins_event.amount_to_take
     
     def active_player_buy_item(self) -> Item:
         if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION and self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
-            print(f'Tried to buy an item on invalid turn step "{self.turn_phase}"')
+            self._logger.error("tried to buy an item on invalid turn phase")
             return None
         player = self.get_active_player_obj()
         if player.coins < 2:
-            print("Player does not have enough coins to buy")
+            self._logger.info(f'player {player.name} tried to buy an item but does not have enough coins')
             return None
 
         if len(player.items) > 4:
-            print("Player has too many items to buy more")
+            self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
             return None
         
         shop_event = BuyItemEvent(self.shop)
@@ -348,33 +337,13 @@ class GameState:
         self._event_bus.emit(shop_event)
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
         player.items.append(shop_event.item)
-
-        return shop_event.item
-
-    @deprecated("Use active_player_buy_item instead")
-    def shop_items(self) -> Item:
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION or self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
-            print("Tried to take shop for items on invalid turn step")
-            return None
-        player = self.get_active_player_obj()
-        if player.coins < 2:
-            print("Player does not have enough coins to buy")
-            return None
-
-        if player.itmes > 4:
-            print("Player has too many items to buy")
-            return None
-        
-        shop_event = BuyItemEvent(self.shop)
-        player.coins -= 2
-        self._event_bus.emit(shop_event)
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
+        self._logger.info(f'player {player.name} bought item {shop_event.item.name}')
 
         return shop_event.item
 
     def active_player_fsf(self) -> None:
         if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
-            print("Tried to fsf on invalid turn step")
+            self._logger.error(f'tried to fsf on invalid turn phase')
             return
         
         fsf_event = FsfEvent(self.deck)
@@ -382,6 +351,7 @@ class GameState:
         self.fsf_monsters = fsf_event.monster_results
         
         self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
+        self._logger.info(f'player {self.get_active_player()} entered combat')
         return
     
     def fsf_select(self, choice: int):
@@ -391,13 +361,14 @@ class GameState:
         if mon_choice.visible:
             raise Warning("Selected already visible monster for fsf")
         mon_choice.visible = True
+        self._logger.info(f'player {self.get_active_player()} flipped monster {mon_choice.name}')
         
     def fsf_fight(self, target: int, item: int) -> None:
         """
         use item on selected monster to try and lower its heatlh
         """
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            print("Tried to fight but turn phase is not 'in combat' ")
+            self._logger.error("tried to fight in invalid turn phase")
         
         player = self.get_active_player_obj()
         tar_mon = self.fsf_monsters[target]
@@ -411,42 +382,51 @@ class GameState:
 
         player.use_item(item_pos=item, target=tar_mon)
         
+        
         if tar_mon.health < 1:
             player.captured_stars.append(tar_mon.stars)
             player.coins += tar_mon.fight_coins
             self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
             self.fsf_monsters = []
+            self._logger.info(f'player {player.name} used item {player.items[item].name} on {tar_mon.name} and reduced its health to 0')
         else:
+            self._logger.info(f'player {player.name} used item {player.items[item].name} on {tar_mon.name}')
             pass
 
 
     def fsf_spare(self, target: int):
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            print("Tried to spare but turn phase is not 'in combat' ")
+            self._logger.error("tried to spare in invalid turn phase")
         player = self.get_active_player_obj()
         tar_mon = self.fsf_monsters[target]
         if not tar_mon.visible:
-            warnings.warn("Fighting monster thats not flipped over")
+            self._logger.error("tried to spare monster that is not flipped over")
+            return
         
         if random.randint(1, 6) >= tar_mon.spare:
             player.captured_stars.append(tar_mon.stars)
+            self._logger.info(f'player {player.name} spared monster {tar_mon.name}')
         else:
             player.health -= 1
+            self._logger.info(f'player {player.name} failed spare on {tar_mon.name}')
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         self.fsf_monsters = []
         
     def fsf_flee(self, target: int):
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            print("Tried to fight but turn phase is not 'in combat' ")
+            self._logger.error("tried to spare in invalid turn phase")
         player = self.get_active_player_obj()
         tar_mon = self.fsf_monsters[target]
         if not tar_mon.visible:
-            warnings.warn("Fighting monster thats not flipped over")
+            self._logger.error("tried to spare monster that is not flipped over")
+            return
         
         if tar_mon.flee_coins > 0:
             player.coins += tar_mon.flee_coins
+            self._logger.info(f'player {player.name} fleed from {tar_mon.name}')
         else:
             player.health -= 1
+            self._logger.info(f'player {player.name} flee spare on {tar_mon.name}')
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
         self.fsf_monsters = []
 
@@ -458,8 +438,9 @@ class GameState:
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
         if self.turn_phase != api_wrapper.TurnPhase.TURN_ENDED:
-            warnings.warn("Advancing turn before all actions taken")
+            self._logger.warning("advancing turn before all actions taken")
         self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
+        self._logger.info(f'{self._turn_order[curr]} ended turn, started {self._turn_order[new_player]} turn')
 
     def _advance_turn_phase(self) -> None:
         pass
@@ -483,6 +464,7 @@ class GameState:
                         mon_name = random.choice(self._allowed_monsters)
                     cur_mon: dict = data["monsters"][mon_name]
                     self.deck[i] = Monster(name=mon_name, data=cur_mon)
+                self._logger.info("intialized monster deck")
 
             except yaml.YAMLError as exc:
                 print(exc)
@@ -500,6 +482,7 @@ class GameState:
                         item_name = random.choice(self._allowed_items)
                     cur_item = data["items"][item_name]
                     self.shop[i] = Item(name=item_name, data=cur_item)
+                self._logger.info("intialized item shop")
 
             except yaml.YAMLError as exc:
                 print(exc)
