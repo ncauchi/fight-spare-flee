@@ -1,8 +1,14 @@
 import { useState } from "react";
+import { type ItemInfo } from "../api_wrapper";
+import { Stack } from "react-bootstrap";
 
-function ItemCard() {
+interface Props {
+  data: ItemInfo;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
+}
+
+function ItemCard({ data, onClick }: Props) {
   const handleHover = (hovering: boolean) => {
-    console.log("Hover");
     setHovering(hovering);
   };
   const hoverSpeed = 0.5;
@@ -16,9 +22,14 @@ function ItemCard() {
       onMouseLeave={() => {
         handleHover(false);
       }}
+      onClick={onClick}
       style={{ "--hover-speed": `${hoverSpeed}s` } as React.CSSProperties}
     >
-      <h4>Item</h4>
+      <Stack dir="vertical">
+        <h2>{data.name}</h2>
+        <p>{data.text}</p>
+        <p>{data.target_type}</p>
+      </Stack>
     </div>
   );
 }

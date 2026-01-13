@@ -267,24 +267,12 @@ class GameState:
         """
         Returns api board status in JSON format
         """
-        #TODO update
-        ret = {
-            'deck': {
-                'size': len(self.deck),
-                'top_card_stars': self.deck[0].stars,
-            },
-            'shop': {
-                'size': len(self.shop),
-            },
+        return {
+            "deck_size": len(self.deck),
+            "shop_size": len(self.shop),
+            "monsters": self.get_status_fsf(),
+            "items": []
         }
-
-        if self.turn_phase == api_wrapper.TurnPhase.IN_COMBAT:
-            visible_monsters = [{'name': monster.name, 'stars': monster.stars} for monster, visible in self.fsf_monsters if visible]
-            flipped_monsters = [{'stars': monster.stars} for monster, visible in self.fsf_monsters if not visible]
-
-            ret["monsters"] = {'visible': visible_monsters, 'flipped': flipped_monsters}
-
-        return ret
     
     def get_status_fsf(self) -> list[api_wrapper.MonsterInfo]:
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
@@ -417,6 +405,8 @@ class GameState:
             warnings.warn("Fighting monster thats not flipped over")
         if item < 0:
             player.health -= 1
+            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+            self.fsf_monsters = []
             return
 
         player.use_item(item_pos=item, target=tar_mon)
@@ -430,17 +420,35 @@ class GameState:
             pass
 
 
-    def fsf_spare(self):
+    def fsf_spare(self, target: int):
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            print("Tried to fight but turn phase is not 'in combat' ")
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        pass
+            print("Tried to spare but turn phase is not 'in combat' ")
+        player = self.get_active_player_obj()
+        tar_mon = self.fsf_monsters[target]
+        if not tar_mon.visible:
+            warnings.warn("Fighting monster thats not flipped over")
         
-    def fsf_flee(self):
+        if random.randint(1, 6) >= tar_mon.spare:
+            player.captured_stars.append(tar_mon.stars)
+        else:
+            player.health -= 1
+        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+        self.fsf_monsters = []
+        
+    def fsf_flee(self, target: int):
         if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
             print("Tried to fight but turn phase is not 'in combat' ")
+        player = self.get_active_player_obj()
+        tar_mon = self.fsf_monsters[target]
+        if not tar_mon.visible:
+            warnings.warn("Fighting monster thats not flipped over")
+        
+        if tar_mon.flee_coins > 0:
+            player.coins += tar_mon.flee_coins
+        else:
+            player.health -= 1
         self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        pass
+        self.fsf_monsters = []
 
     def advance_active_player(self) -> None:
         '''
@@ -449,7 +457,8 @@ class GameState:
         curr = self._active_player
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
-
+        if self.turn_phase != api_wrapper.TurnPhase.TURN_ENDED:
+            warnings.warn("Advancing turn before all actions taken")
         self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
 
     def _advance_turn_phase(self) -> None:

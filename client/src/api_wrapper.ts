@@ -6,16 +6,21 @@ import { Socket } from "socket.io-client";
 // Server -> Client can have args, Client <- server needs to be wrapped in types
 
 // Enums
-export type PlayerActionChoice = "COINS" | "SHOP" | "FSF" | "END";
+export type PlayerActionChoice = "COINS" | "SHOP" | "FSF" | "COMBAT" | "END";
+
+export type PlayerCombatChoice =  "FIGHT" | "SPARE" | "FLEE" | "SELECT";
 
 export type GameStatus = "LOBBY" | "GAME" | "ENDED";
 
 export type TurnPhase = "CHOOSING_ACTION" | "IN_COMBAT" | "SHOPPING" | "USING_SPECIAL" | "TURN_ENDED";
 
+export type ItemTarget = "MONSTER" | "PLAYER" | "ITEM" | "NONE"
+
 // Shared Models
 export interface ItemInfo {
   name: string;
   text: string;
+  target_type: ItemTarget;
 }
 
 export interface Message {
@@ -26,12 +31,18 @@ export interface Message {
 export interface MonsterInfo {
   name?: string;
   stars: number;
+  max_health?: number;
+  health?: number;
+  spare?: number;
+  flee_coins?: number;
+  fight_coins?: number;
 }
 
 export interface PlayerInfo {
   name: string;
   ready: boolean;
   coins: number;
+  captured_stars: number[];
   num_items: number;
   health: number;
 }
@@ -47,8 +58,16 @@ export interface InitResponse {
   active_player?: string;
 }
 
-export interface ActionResponse {
-  status: boolean;
+export interface BoardResponse {
+  deck_size: number;
+  shop_size: number;
+  monsters: MonsterInfo[];
+  items: ItemInfo[];
+}
+
+export interface TurnResponse {
+  active: string;
+  phase: TurnPhase;
 }
 
 // Client -> Server Packages
@@ -71,6 +90,9 @@ export interface ChatRequest {
 
 export interface ActionRequest {
   choice: PlayerActionChoice;
+  combat?: PlayerCombatChoice;
+  target?: number;
+  item?: number;
 }
 
 // ==================== API WRAPPER CLASS ====================
@@ -105,8 +127,8 @@ export class GameAPI {
     this.socket.emit("CHAT", req);
   }
 
-  requestSendAction(choice: PlayerActionChoice) {
-    const req: ActionRequest = { choice: choice };
+  requestSendAction(choice: PlayerActionChoice, combat?: PlayerCombatChoice,  target?: number, item?: number) {
+    const req: ActionRequest = { choice: choice, combat: combat, target: target, item: item };
     this.socket.emit("ACTION", req);
   }
 
@@ -131,14 +153,14 @@ export class GameAPI {
     cleanup?.push(() => this.socket.off("START_GAME", handler));
   }
 
-  onChangeTurn(handler: (new_active_player: string) => void, cleanup?: any[]) {
-    this.socket.on("CHANGE_TURN", handler);
+  onTurn(handler: (active_player: string, TurnPhase: TurnPhase) => void, cleanup?: any[]) {
+    this.socket.on("CHANGE_TURN", (data: TurnResponse) => handler(data.active, data.phase));
     cleanup?.push(() => this.socket.off("CHANGE_TURN", handler));
   }
 
-  onActionResponse(handler: (action: PlayerActionChoice, coins_change: number, monsters: MonsterInfo[]) => void, cleanup?: any[]) {
-    this.socket.on("ACTION_RESPONSE", handler);
-    cleanup?.push(() => this.socket.off("ACTION_RESPONSE", handler));
+  onBoard(handler: (deck_size: number, shop_size: number, monsters: MonsterInfo[], items: ItemInfo[],) => void, cleanup?: any[]) {
+    this.socket.on("BOARD", (data: BoardResponse)=> handler(data.deck_size, data.shop_size, data.monsters, data.items));
+    cleanup?.push(() => this.socket.off("BOARD", handler));
   }
 
   onHandUpdate(handler: (items: ItemInfo[]) => void, cleanup?: any[]) {

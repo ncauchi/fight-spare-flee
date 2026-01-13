@@ -17,6 +17,9 @@ export interface GameState {
   turn_phase?: api.TurnPhase;
   items?: api.ItemInfo[];
   monsters?: api.MonsterInfo[];
+  boardItems?: api.ItemInfo[];
+  deckSize?: number;
+  shopSize?: number;
 }
 
 const GameStateContext = createContext<GameState | undefined>(undefined);
@@ -75,9 +78,9 @@ function Game() {
 
     apiRef.current.onStartGame(handleStartGame, cleanup);
 
-    apiRef.current.onChangeTurn(handleTurnChange, cleanup);
+    apiRef.current.onTurn(handleTurnChange, cleanup);
 
-    apiRef.current.onActionResponse(handleActionResponse, cleanup);
+    apiRef.current.onBoard(handleBoardUpdate, cleanup);
 
     apiRef.current.onHandUpdate(handleHandUpdate, cleanup);
 
@@ -124,6 +127,7 @@ function Game() {
       connected: true,
       status: data.status,
       active_player: data.active_player,
+      turn_phase: data.active_player == playerName ? "CHOOSING_ACTION" : "TURN_ENDED",
     };
     setGameState(initState);
     console.log("Retrieved game data from game service.");
@@ -132,45 +136,37 @@ function Game() {
     }
   };
 
-  const handleTurnChange = (new_player: string) => {
+  const handleTurnChange = (new_player: string, phase: api.TurnPhase) => {
     console.log("New player turn: ", new_player);
+    if (phase != gameState?.turn_phase) {
+      console.log(`Entering new turn phase: ${phase}`);
+    }
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
         ...prevState,
         active_player: new_player,
-        turn_phase: new_player == playerName ? "CHOOSING_ACTION" : "TURN_ENDED",
+        turn_phase: new_player == playerName ? phase : "TURN_ENDED",
       };
     });
   };
 
-  const handleActionResponse = (
-    new_phase: api.PlayerActionChoice,
-    coins_change: number,
-    monsters: api.MonsterInfo[]
+  const handleBoardUpdate = (
+    deckSize: number,
+    shopSize: number,
+    monsters: api.MonsterInfo[],
+    items: api.ItemInfo[]
   ) => {
-    if (new_phase == "COINS") {
-      console.log(`Picked up ${coins_change} coins`);
-    } else if (new_phase == "SHOP") {
-      console.log(`Bought item for ${coins_change * -1} coins.`);
-      setGameState((prevState) => {
-        if (!prevState) return undefined;
-        return {
-          ...prevState,
-          turn_phase: "SHOPPING",
-        };
-      });
-    } else if (new_phase == "FSF") {
-      console.log(`FSFing ${monsters}`);
-      setGameState((prevState) => {
-        if (!prevState) return undefined;
-        return {
-          ...prevState,
-          turn_phase: "IN_COMBAT",
-          monsters: monsters,
-        };
-      });
-    }
+    setGameState((prevState) => {
+      if (!prevState) return undefined;
+      return {
+        ...prevState,
+        deckSize: deckSize,
+        shopSize: shopSize,
+        monsters: monsters,
+        boardItems: items,
+      };
+    });
   };
 
   const handleStartGame = (first_player: string) => {

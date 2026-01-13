@@ -4,21 +4,27 @@ import { useGameState } from "./Game";
 import { usePlayerName } from "./NameContext";
 import type { PlayerInfo } from "../api_wrapper";
 
-function BoardPlayerHand() {
+interface Props {
+  onItemClick: (idx: number) => void;
+}
+
+function BoardPlayerHand({ onItemClick }: Props) {
   const gameState = useGameState();
   const playerName = usePlayerName();
   const player = gameState?.players.find((p: PlayerInfo) => {
     return p.name == playerName;
   });
   if (!player) return <Spinner></Spinner>;
+  const cards = gameState?.items;
+
   return (
     <div className="item-card-box">
       <p>
         Health: {player.health} Coins: {player.coins} Cards: {player.num_items}
       </p>
+      <p>Phase: {gameState?.turn_phase}</p>
       <Stack direction="horizontal" gap={1}>
-        <ItemCard />
-        <ItemCard />
+        {cards && cards.map((info, i) => <ItemCard data={info} onClick={() => onItemClick(i)} />)}
       </Stack>
     </div>
   );

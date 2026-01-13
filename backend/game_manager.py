@@ -9,6 +9,7 @@ import threading
 import requests
 from test import get_local_ip
 from api_wrapper import *
+import warnings
 
 app = Flask(__name__)
 CORS(app)
@@ -100,8 +101,7 @@ def JOIN(request_data: JoinRequest, sid):
 
 @fsf_api.event_handler(LobbyReadyRequest)
 def LOBBY_READY(request_data: LobbyReadyRequest, sid):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+    player_name, game_id = player_from_sid(sid)
 
     ready = request_data.ready
     lock = game_locks[game_id]
@@ -115,8 +115,7 @@ def LOBBY_READY(request_data: LobbyReadyRequest, sid):
 
 @fsf_api.event_handler(StartGameRequest)
 def START_GAME(data: StartGameRequest, sid):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+    player_name, game_id = player_from_sid(sid)
 
     with game_locks[game_id]:
         game_snapshot = games[game_id]
@@ -138,21 +137,19 @@ def START_GAME(data: StartGameRequest, sid):
 
 @fsf_api.event_handler(EndTurnRequest)
 def END_TURN(data: EndTurnRequest, sid):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+    player_name, game_id = player_from_sid(sid)
 
     with game_locks[game_id]:
         game = games[game_id]
         game.advance_active_player()
         new_active_name = game.get_active_player()
     
-    fsf_api.emit_change_turn_event(game_id, new_active_name)
+    fsf_api.emit_turn_event(game_id, new_active_name, phase=TurnPhase.CHOOSING_ACTION)
     
 
 @fsf_api.event_handler(ChatRequest)
 def CHAT(data: ChatRequest, sid):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+    player_name, game_id = player_from_sid(sid)
     fsf_api.emit_chat_event(game_id, Message(player_name=player_name, text=data.text))
 
 @fsf_api.event_handler(ActionRequest)
@@ -211,13 +208,52 @@ def ACTION(data: ActionRequest, sid):
     if board_change:
         emit('BOARD', board_snapshot )
 
-    
+     
+@fsf_api.event_handler(ActionRequest)
+def ACTION(data: ActionRequest, sid):
+    player_name, game_id = player_from_sid(sid)
+    choice = data.choice
+    with game_locks[game_id]:
+        game = games[game_id]
+        if player_name != game.get_active_player():
+            warnings.warn(f'Player "{player_name}" tried to take an action out of turn.')
+            return
+        match choice:
+            case PlayerActionChoice.COINS:
+                game.active_player_take_coins()
+            case PlayerActionChoice.SHOP:
+                game.active_player_buy_item()
+            case PlayerActionChoice.FSF:
+                game.active_player_fsf()
+            case PlayerActionChoice.END:
+                game.advance_active_player()
+            case PlayerActionChoice.COMBAT:
+                if not data.combat:
+                    print("Tried to do invalid combat action")
+                match data.combat:
+                    case PlayerCombatChoice.SELECT:
+                        game.fsf_select(data.target)
+                    case PlayerCombatChoice.FIGHT:
+                        game.fsf_fight(data.target, data.item)
+                    case PlayerCombatChoice.SPARE:
+                        game.fsf_spare(data.target)
+                    case PlayerCombatChoice.FLEE:
+                        game.fsf_flee(data.target)
 
-        
-@socketio.event
-def FSF(target: int):
-    with connections_lock:
-        player_name, game_id = connections[sid]
+        # Capture state before releasing lock
+        players_snapshot = game.get_status_players()
+        board_snapshot = game.get_status_board()
+        hand_snapshot = game.get_active_player_obj().get_status_hand()
+        active_player = game.get_active_player()
+        turn_phase = game.turn_phase
+
+    # Emit events outside the lock
+    fsf_api.emit_players_event(game_id, players=players_snapshot)
+    fsf_api.emit_board_event(game_id, **board_snapshot)
+    fsf_api.emit_hand_event(sid, items=hand_snapshot)
+    fsf_api.emit_turn_event(game_id, active=active_player, phase=turn_phase)
+                
+
 
     
 

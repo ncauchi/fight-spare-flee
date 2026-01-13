@@ -100,13 +100,29 @@
 .item-card {
   background-color: rgb(160, 134, 87);
   width: 5rem;
-  height: 10rem;
+  height: 7rem;
   transition: transform var(--hover-speed);
   border-radius: 1rem;
 
   &.hovering {
-    transform: translate(0, -2rem) rotate3d(1, 0.5, 0, 30deg);
+    transform: translate(0, -1rem) rotate3d(1, 0.5, 0, 10deg);
   }
+
+  
+}
+
+.monster-card {
+  background-color: rgb(123, 49, 49);
+  width: 5rem;
+  height: 7rem;
+  transition: transform var(--hover-speed);
+  border-radius: 1rem;
+
+  &.hovering {
+    transform: translate(0, -1rem) rotate3d(1, 0.5, 0, 10deg);
+  }
+
+  
 }
 
 .choosing-action-box {

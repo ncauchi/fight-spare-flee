@@ -10,7 +10,14 @@ class PlayerActionChoice(Enum):
     COINS = "COINS"
     SHOP = "SHOP"
     FSF = "FSF"
+    COMBAT = "COMBAT"
     END = "END"
+
+class PlayerCombatChoice(Enum):
+    FIGHT = "FIGHT"
+    SPARE = "SPARE"
+    FLEE = "FLEE"
+    SELECT = "SELECT"
 
 class GameStatus(Enum):
     LOBBY = "LOBBY"
@@ -87,7 +94,9 @@ class ChatRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     choice: PlayerActionChoice
-
+    combat: Optional[PlayerCombatChoice] = None
+    target: Optional[int] = -1
+    item: Optional[int] = -1
 
 
 # Server Sent Events
@@ -154,19 +163,22 @@ class Fsf_api():
 
     def emit_players_event(self, to: str, players: List[PlayerInfo], include_self: bool = True):
         """Emit PLAYERS event to broadcast updated player information."""
-        event_data = [player.model_dump() for player in players]
+        event_data = [player.model_dump(mode='json') for player in players]
         self.server.emit("PLAYERS", event_data, to=to, include_self=include_self)
 
     def emit_chat_event(self, to: str, message: Message, include_self: bool = True):
         """Emit CHAT event to broadcast a chat message."""
-        self.server.emit("CHAT", message.model_dump(), to=to, include_self=include_self)
+        self.server.emit("CHAT", message.model_dump(mode='json'), to=to, include_self=include_self)
 
-    def emit_change_turn_event(self, to: str, new_active: str):
+    def emit_turn_event(self, to: str, active: str, phase: TurnPhase):
         """Emit CHANGE_TURN event to signal active player change."""
-        self.server.emit("CHANGE_TURN", new_active, to=to)
+        self.server.emit("CHANGE_TURN", {"active": active, "phase": phase.name}, to=to)
 
-    def emit_action_response(self, to: str, action: PlayerActionChoice, coins_gain: int = 0, monsters : List[MonsterInfo] = []):
-        self.server.emit("ACTION_RESPONSE", action.name, coins_gain, monsters, to=to)
+    def emit_board_event(self, to: str, deck_size: int, shop_size: int, monsters : List[MonsterInfo] = [], items : list[ItemInfo] = []):
+        item_i = [item.model_dump(mode='json') for item in items] if items else []
+        mon_i = [mon.model_dump(mode='json') for mon in monsters] if monsters else []
+        self.server.emit("BOARD", {"deck_size": deck_size, "shop_size": shop_size, "monsters": mon_i, "items": item_i}, to=to)
 
     def emit_hand_event(self, to: str, items: List[ItemInfo]):
-        self.server.emit("ITEMS", items, to=to)
+        item_i = [item.model_dump(mode='json') for item in items] if items else []
+        self.server.emit("ITEMS", item_i, to=to)
