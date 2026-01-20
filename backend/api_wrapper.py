@@ -9,9 +9,9 @@ from pydantic import BaseModel, field_validator
 class PlayerActionChoice(Enum):
     COINS = "COINS"
     SHOP = "SHOP"
-    FSF = "FSF"
     COMBAT = "COMBAT"
     END = "END"
+    CANCEL = "CANCEL"
 
 class PlayerCombatChoice(Enum):
     FIGHT = "FIGHT"
@@ -27,8 +27,9 @@ class GameStatus(Enum):
 class TurnPhase(Enum):
     CHOOSING_ACTION = "CHOOSING_ACTION"
     IN_COMBAT = "IN_COMBAT"
+    IN_LEFTOVER_COMBAT = "IN_LEFTOVER_COMBAT"
     SHOPPING = "SHOPPING"
-    USING_SPECIAL = "USING_SPECIAL"
+    PVP = "PVP"
     TURN_ENDED = "TURN_ENDED"
 
 class ItemTarget(Enum):
@@ -97,6 +98,12 @@ class ActionRequest(BaseModel):
     combat: Optional[PlayerCombatChoice] = None
     target: Optional[int] = -1
     item: Optional[int] = -1
+
+class ItemChoiceRequest(BaseModel):
+    pass
+
+class PlayerChoiceRequest(BaseModel):
+    pass
 
 
 # Server Sent Events
