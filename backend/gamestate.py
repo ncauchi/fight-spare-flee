@@ -58,6 +58,7 @@ class Monster:
     spare: int
     visible: bool
     flee_coins: int
+    spare_coins: int
     fight_coins: int
     max_health: int
 
@@ -73,6 +74,7 @@ class Monster:
         self.health = data["health"]
         self.spare = data["spare"]
         self.flee_coins = data["flee_coins"]
+        self.spare_coins = data["spare_coins"]
         self.fight_coins = data["fight_coins"]
         self.max_health = data["health"]
 
@@ -85,6 +87,7 @@ class Monster:
                 health=self.health,
                 spare=self.spare,
                 flee_coins=self.flee_coins,
+                spare_coins = self.spare_coins,
                 fight_coins=self.fight_coins,
             )
         else:
@@ -240,9 +243,29 @@ class GameState:
 
     class CombatSubState:
         monsters: list[Monster]
+        leftover_queue: list[str]
+        state : str # "selecting" | "fled" | "fighting" | "deciding" | "ended"
+        flipped_idx: int | None
 
         def __init__(self, monsters: list[Monster]):
             self.monsters = monsters
+            self.leftover_queue = []
+            self.state = "selecting"
+            self.flipped_idx = None
+
+        def kill_spare_monster(self, monster_idx: int):
+            self.monsters.pop(monster_idx)
+            self.flipped_idx = None
+
+        def flee_monster(self, monster_idx: int):
+            mon = self.monsters.pop(monster_idx)
+            self.leftover_queue.append(mon)
+            self.flipped_idx = None
+            
+
+        def has_leftover_monsters(self) -> bool:
+            """Check if any monsters are revealed but still alive"""
+            return len(self.leftover_queue) > 0
 
 
     class PvpSubState:
@@ -251,7 +274,29 @@ class GameState:
 
     class FleeCombatSubState:
         monsters: list[Monster]
-        true_active: str
+        original_player: str
+        order: list[str]
+        state: str # "selecting" | "fighting"
+        selected_idx: int | None
+
+        def __init__(self, monsters: list[Monster], original_player: str, order: list[str]):
+            self.monsters = monsters
+            self.original_player = original_player
+            self.state = "selecting"
+            self.order = order
+            self.selected_idx = None
+
+        def kill_spare_monster(self, monster_idx: int):
+            self.monsters.pop(monster_idx)
+            self.selected_idx = None
+            self.state = "selecting"
+
+        def pass_monster(self):
+            self.selected_idx = None
+            self.state = "selecting"
+
+        def is_finished(self):
+            return len(self.order) == 0 or len(self.monsters) == 0
 
     def __init__(self, id : str, name : str, owner : str, max_players: int, allowed_items: Literal["*"] | list[str] = "*", allowed_monsters: Literal["*"] | list[str] = "*"):
         self._id = id
@@ -295,9 +340,10 @@ class GameState:
         }
     
     def get_status_fsf(self) -> list[api_wrapper.MonsterInfo]:
-        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
+        if self.turn_phase not in [api_wrapper.TurnPhase.IN_COMBAT,
+                                    api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT]:
             return None
-        return [mon.get_api_status() for mon in self.fsf_monsters]
+        return [mon.get_api_status() for mon in self._combat_sbs.monsters]
     
     def add_player(self, player_name, sid) -> None:
         self.players[player_name] = Player(name=player_name, sid=sid)
@@ -333,24 +379,9 @@ class GameState:
                 self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
                 self._logger.info(f'player {self.get_active_player()} took coins')
             case api_wrapper.PlayerActionChoice.SHOP:
-                if player.coins < 2:
-                    self._logger.info(f'player {player.name} tried to buy an item but does not have enough coins')
-                    return
-                if len(player.items) > 4:
-                    self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
-                    return            
-                shop_event = BuyItemEvent(self.shop)
-                player.coins -= 2
-                self._event_bus.emit(shop_event)
-                self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
-                player.items.append(shop_event.item)
-                self._logger.info(f'player {player.name} bought item {shop_event.item.name}')
+                self._buy_item(player=player)
             case api_wrapper.PlayerActionChoice.COMBAT:
-                fsf_event = FsfEvent(self.deck)
-                self._event_bus.emit(fsf_event)
-                self._combat_sbs = self.CombatSubState(fsf_event.monster_results)
                 self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
-                self._logger.info(f'player {self.get_active_player()} entered combat')
             case api_wrapper.PlayerActionChoice.END:
                 self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
             case _:
@@ -367,6 +398,73 @@ class GameState:
             self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
             self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
             return            
+        self._buy_item(player=player)
+
+    def _state_combat(self, player: str, action: api_wrapper.PlayerActionChoice = None, combat_action: api_wrapper.PlayerCombatChoice = None, item: int = None, monster_idx: int = None):
+        player_obj = self.players[player]
+
+        if not hasattr(self, '_combat_sbs') or not self._combat_sbs:
+            self._logger.error("combat state accessed without combat substate")
+            return
+        
+        if monster_idx is None or monster_idx < 0 or monster_idx >= len(self._combat_sbs.monsters):
+            self._logger.warning(f'invalid monster index {monster_idx}')
+            return
+        
+        if item and self._combat_sbs and self._combat_sbs.flipped_idx:
+            self._combat_fight(player_obj, self._combat_sbs.flipped_idx, item)
+            return
+        
+        if action and action == api_wrapper.PlayerActionChoice.CANCEL:
+
+            return
+
+        if combat_action == api_wrapper.PlayerCombatChoice.SELECT:
+            self._combat_select(player_obj, monster_idx)
+        elif combat_action == api_wrapper.PlayerCombatChoice.FIGHT:
+            self._combat_fight(player_obj, monster_idx, item)
+        elif combat_action == api_wrapper.PlayerCombatChoice.SPARE:
+            self._combat_spare(player_obj, monster_idx)
+        elif combat_action == api_wrapper.PlayerCombatChoice.FLEE:
+            self._combat_flee(player_obj, monster_idx)
+        elif action == api_wrapper.PlayerActionChoice.SHOP:
+            self._transition_to_shopping(player_obj)
+        elif action == api_wrapper.PlayerActionChoice.END:
+            self._end_combat()
+
+    def _state_fled(self, player, action: api_wrapper.PlayerActionChoice = None, combat_action: api_wrapper.PlayerCombatChoice = None, monster_idx: int = None):
+        player_obj = self.players[player]
+
+        if not hasattr(self, '_combat_sbs') or not self._combat_sbs:
+            self._logger.error("fled state accessed without combat substate")
+            return
+        
+        if action == api_wrapper.PlayerActionChoice.SHOP:
+            self._buy_item(player=player_obj)
+        elif monster_idx and combat_action == api_wrapper.PlayerCombatChoice.SELECT:
+            self._combat_select(player=player_obj, monster_idx=monster_idx)
+        elif action == api_wrapper.PlayerActionChoice.END:
+            self._end_combat()
+
+    def _state_end_turn(self):
+        if self.turn_phase != api_wrapper.TurnPhase.TURN_ENDED:
+            self._logger.warning("tried to go to next turn but not in correct state")
+            return
+        if self._combat_sbs or self._combat_sbs.has_leftover_monsters():
+            self._logger.info("tried to go to next turn but leftover monsters remain, entering leftover combat")
+            self._end_combat()
+            return
+        self.advance_active_player()
+        self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
+        
+
+    def _buy_item(self, player: Player):
+        if player.coins < 2:
+            self._logger.info(f'player {player.name} tried to buy an item but does not have enough coins')
+            return
+        if len(player.items) > 4:
+            self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
+            return            
         shop_event = BuyItemEvent(self.shop)
         player.coins -= 2
         self._event_bus.emit(shop_event)
@@ -374,14 +472,206 @@ class GameState:
         player.items.append(shop_event.item)
         self._logger.info(f'player {player.name} bought item {shop_event.item.name}')
 
-    def _state_combat(self, player: str, action: api_wrapper.PlayerActionChoice = None, combat_action: api_wrapper.PlayerCombatChoice = None, item: int = None, monster_choice: int = None):
-        pass
+    def _combat_select(self, player: Player, monster_idx: int):
+        """SELECT: Reveal a face-down monster"""
+        monster = self._combat_sbs.monsters[monster_idx]
+
+        if monster.visible:
+            self._logger.warning(f'{player.name} tried to select already visible monster')
+            return
+        if self._combat_sbs.state != "selecting":
+            self._logger.warning(f'{player.name} tried to select in wrong phase')
+
+        monster.visible = True
+        self._logger.info(f'{player.name} revealed {monster.name}')
+        self._combat_sbs.state = "deciding"
+        self._combat_sbs.flipped_idx = monster_idx
+
+    def _combat_fight(self, player: Player, monster_idx: int, item_idx: int):
+        """FIGHT: Use item on monster"""
+        monster = self._combat_sbs.monsters[monster_idx]
+
+        if not monster.visible:
+            self._logger.warning(f'{player.name} tried to fight hidden monster')
+            return
+        if item_idx is None or item_idx < 0 or item_idx >= len(player.items):
+            self._logger.warning(f'invalid item index {item_idx}')
+            return
+        if self._combat_sbs.state != "deciding" or self._combat_sbs.state != "fighting":
+            self._logger.warning(f'{player.name} tried to fight in wrong phase')
+            return
+
+        player.use_item(item_idx, target=monster)
+        self._logger.info(f'{player.name} used item on {monster.name}')
+        
+        if monster.health <= 0:
+            player.captured_stars.append(monster.stars)
+            player.coins += monster.fight_coins
+            self._logger.info(f'{player.name} killed {monster.name}')
+            self._combat_sbs.kill_spare_monster(monster_idx)
+            if len(self._combat_sbs.monsters) > 0:
+                self._combat_sbs.state = "selecting"
+            else:
+                self._end_combat()
+        elif len([1 for item in player.items if item.target_type == api_wrapper.ItemTarget.MONSTER]) == 0:   
+            self._logger.info(f'{player.name} failed to kill {monster.name}')
+            player.health -= 1
+            self._end_combat()
+        else:
+            self._combat_sbs.state = "fighting"
+
+    def _combat_spare(self, player: Player, monster_idx: int):
+        """SPARE: Roll dice to spare monster"""
+        monster = self._combat_sbs.monsters[monster_idx]
+
+        if not monster.visible:
+            self._logger.error(f'{player.name} tried to spare hidden monster')
+            return
+        if self._combat_sbs.state != "deciding":
+            self._logger.warning(f'{player.name} tried to fight in wrong phase')
+            return
+
+        roll = random.randint(1, 6)
+
+        if roll >= monster.spare:
+            player.captured_stars.append(monster.stars)
+            player.coins += monster.spare_coins
+            self._combat_sbs.kill_spare_monster(monster_idx)
+            self._logger.info(f'{player.name} spared {monster.name} (rolled {roll})')
+            if len(self._combat_sbs.monsters) > 0:
+                self._combat_sbs.state = "selecting"
+            else:
+                self._end_combat()
+        else:
+            player.health -= 1
+            self._logger.info(f'{player.name} failed to spare {monster.name} (rolled {roll})')
+            self._end_combat()
+
+        
+    def _combat_flee(self, player: Player, monster_idx: int):
+        """FLEE: Flee from monster"""
+        monster = self._combat_sbs.monsters[monster_idx]
+
+        if not monster.visible:
+            self._logger.error(f'{player.name} tried to flee from hidden monster')
+            return
+
+        if monster.flee_coins > 0:
+            player.coins += monster.flee_coins
+            self._combat_sbs.flee_monster(monster_idx)
+            self._combat_sbs.state = "selecting"
+            self.turn_phase = api_wrapper.TurnPhase.FLED
+            self._logger.info(f'{player.name} fled from {monster.name}, gained {monster.flee_coins} coins')
+        else:
+            self._logger.warning(f'{player.name} tried to flee from a monster they can\'t escape')
+
+
+    def _end_combat(self):
+        """End combat and check for leftover monsters"""
+        if not self._combat_sbs:
+            return
+        
+        if self._combat_sbs.has_leftover_monsters():
+            self.turn_phase = api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT
+            self._flee_combat_sbs = self.FleeCombatSubState(monsters=self._combat_sbs.leftover_queue, 
+                                                            original_player=self.get_active_player(), 
+                                                            order=[p for p in self._turn_order if p != self.get_active_player()])
+            self._logger.info(f'leftover monsters remain, entering leftover combat')
+        else:
+            self._combat_sbs = None
+            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
 
     def _state_pvp(self, player: str, action: api_wrapper.PlayerActionChoice = None, item_choice: int = None, player_target: str = None):
         pass
 
-    def _state_leftover_combat(self, player: str, action: api_wrapper.PlayerActionChoice = None, combat_action: api_wrapper.PlayerCombatChoice = None, item: int = None, monster_choice: int = None):
-        pass
+    def _state_leftover_combat(self, player: str, combat_action: api_wrapper.PlayerCombatChoice = None, item: int = None, monster_choice: int = None):
+        """Handle leftover combat - each player gets one chance to fight or pass"""
+
+        if not self._flee_combat_sbs:
+            self._logger.error("leftover combat state accessed without combat substate")
+            return
+        if self._flee_combat_sbs.order[0] != player:
+            self._logger.warning(f'{player} tried to act in leftover combat out of turn')
+            return
+        
+        player_obj = self.players[player]
+
+        if item and self._flee_combat_sbs and self._flee_combat_sbs.selected_idx:
+            self._leftover_fight(player_obj, self._combat_sbs.flipped_idx, item)
+        elif combat_action == api_wrapper.PlayerCombatChoice.SPARE:
+            self._leftover_spare(player, monster_choice)
+        elif combat_action == api_wrapper.PlayerActionChoice.END:
+            self._leftover_pass(player)
+        else:
+            self._logger.warning(f'{player} tried invalid action in leftover combat')
+
+
+
+    def _leftover_fight(self, player_name: str, monster_idx: int, item_idx: int):
+        """Player attempts to fight a leftover monster"""
+        monster = self._combat_sbs.monsters[monster_idx]
+        if self._flee_combat_sbs.order[0] != player_name:
+            self._logger.warning(f'{player_name} tried to act in leftover combat out of turn')
+            return
+
+        player = self.players[player_name]
+
+        if item_idx is None or item_idx < 0 or item_idx >= len(player.items):
+            self._logger.warning(f'invalid item index {item_idx}')
+            return
+
+        player.use_item(item_idx, target=monster)
+        self._logger.info(f'{player.name} used item on {monster.name}')
+        
+        if monster.health <= 0:
+            player.captured_stars.append(monster.stars)
+            player.coins += monster.fight_coins
+            self._logger.info(f'{player.name} killed {monster.name}')
+            self._flee_combat_sbs.kill_spare_monster(monster_idx)
+            if self._flee_combat_sbs.is_finished():
+                self._advance_leftover_queue()
+        elif len([1 for item in player.items if item.target_type == api_wrapper.ItemTarget.MONSTER]) == 0:   
+            self._logger.info(f'{player.name} failed to kill {monster.name}')
+            player.health -= 1
+            self._advance_leftover_queue()
+        else:
+            self._flee_combat_sbs.state = "fighting"
+        
+    def _leftover_spare(self, player: str, monster_idx: int):
+        monster = self._combat_sbs.monsters[monster_idx]
+
+        if self._flee_combat_sbs.state != "selecting":
+            self._logger.warning(f'{player.name} tried to fight in wrong phase')
+            return
+
+        roll = random.randint(1, 6)
+        if roll >= monster.spare:
+            player.captured_stars.append(monster.stars)
+            player.coins += monster.spare_coins
+            self._flee_combat_sbs.kill_spare_monster(monster_idx)
+            self._logger.info(f'{player.name} spared {monster.name} (rolled {roll})')
+            if self._flee_combat_sbs.is_finished():
+                self._advance_leftover_queue()
+        else:
+            player.health -= 1
+            self._logger.info(f'{player.name} failed to spare {monster.name} (rolled {roll})')
+            self._advance_leftover_queue
+
+    def _leftover_pass(self, player_name: str):
+        """Player passes on leftover combat"""
+        self._logger.info(f'{player_name} passed on leftover combat')
+        self._advance_leftover_queue()
+
+    def _advance_leftover_queue(self):
+        """Move to next player in leftover queue or end leftover combat"""
+
+        if self._flee_combat_sbs.is_finished():
+            self._logger.info('leftover combat complete')
+            self._combat_sbs = None
+            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+        else:
+            self._flee_combat_sbs.order.pop(0)
+            self._logger.info(f'next leftover player: {self._flee_combat_sbs.order[0]}')
 
 
     def player_action(self, player: str, action: api_wrapper.PlayerActionChoice):
@@ -398,6 +688,7 @@ class GameState:
             api_wrapper.TurnPhase.CHOOSING_ACTION: self._state_choosing_action,
             api_wrapper.TurnPhase.IN_COMBAT: self._state_combat,
             api_wrapper.TurnPhase.SHOPPING: self._state_shopping,
+            api_wrapper.TurnPhase.FLED: self._state_fled,
         }
 
         if self.turn_phase not in valid_states:
@@ -405,11 +696,17 @@ class GameState:
 
         valid_states[self.turn_phase](action=action)
 
+        if self.turn_phase == api_wrapper.TurnPhase.TURN_ENDED:
+            self._state_end_turn()
+
     def player_select_item(self, player: str, choice: int):
         if player not in self.players:
             self._logger.error(f'unregistered player {player} tried to take an action')
             return
-        
+        if self.turn_phase != api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT and player != self.get_active_player():
+            self._logger.warning(f'player {player} tried to take action out of turn')
+            return
+
         valid_states = {
             api_wrapper.TurnPhase.CHOOSING_ACTION: self._state_choosing_action,
             api_wrapper.TurnPhase.IN_COMBAT: self._state_combat,
@@ -419,20 +716,38 @@ class GameState:
 
         if self.turn_phase not in valid_states:
             self._logger.warning(f'tried to use item while in state {self.turn_phase.name}')
+            return
 
-    def player_select_monster(self, player: str, choice: int):
+        # Call appropriate state handler with item parameter
+        valid_states[self.turn_phase](player=player, item=choice)
+
+        if self.turn_phase == api_wrapper.TurnPhase.TURN_ENDED:
+            self._state_end_turn()
+
+    def player_select_monster(self, player: str, choice: int, combat_action: api_wrapper.PlayerCombatChoice):
         if player not in self.players:
             self._logger.error(f'unregistered player {player} tried to take an action')
             return
-        
+        if self.turn_phase != api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT and player != self.get_active_player():
+            self._logger.warning(f'player {player} tried to take action out of turn')
+            return
+
         valid_states = {
             api_wrapper.TurnPhase.PVP: self._state_pvp,
             api_wrapper.TurnPhase.IN_COMBAT: self._state_combat,
+            api_wrapper.TurnPhase.FLED: self._state_fled,
             api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT: self._state_leftover_combat,
         }
 
         if self.turn_phase not in valid_states:
             self._logger.warning(f'tried to select monster while in state {self.turn_phase.name}')
+            return
+
+        # Call appropriate state handler with monster_choice parameter
+        valid_states[self.turn_phase](player=player, monster_choice=choice, combat_action=combat_action)
+
+        if self.turn_phase == api_wrapper.TurnPhase.TURN_ENDED:
+            self._state_end_turn()
 
     def player_select_player(self, player: str, choice: str):
         if player not in self.players:
@@ -446,153 +761,21 @@ class GameState:
         if self.turn_phase not in valid_states:
             self._logger.warning(f'tried to select {choice} while in state {self.turn_phase.name}')
 
-    @deprecated("")
-    def active_player_take_coins(self) -> int:
-        '''
-        returns the amount of coins gained
-        '''
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
-            self._logger.error("tried to take coins on invalid turn phase")
-            return
-        
-        coins_event = TakeCoinEvent()
-        self._event_bus.emit(event=coins_event)
-
-        self.get_active_player_obj().coins += coins_event.amount_to_take
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        self._logger.info(f'player {self.get_active_player()} took coins')
-        return coins_event.amount_to_take
-
-    @deprecated("")
-    def active_player_buy_item(self) -> Item:
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION and self.turn_phase != api_wrapper.TurnPhase.SHOPPING:
-            self._logger.error("tried to buy an item on invalid turn phase")
-            return None
-        player = self.get_active_player_obj()
-        if player.coins < 2:
-            self._logger.info(f'player {player.name} tried to buy an item but does not have enough coins')
-            return None
-
-        if len(player.items) > 4:
-            self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
-            return None
-        
-        shop_event = BuyItemEvent(self.shop)
-        player.coins -= 2
-        self._event_bus.emit(shop_event)
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
-        player.items.append(shop_event.item)
-        self._logger.info(f'player {player.name} bought item {shop_event.item.name}')
-
-        return shop_event.item
-
-    @deprecated("")
-    def active_player_fsf(self) -> None:
-        if self.turn_phase != api_wrapper.TurnPhase.CHOOSING_ACTION:
-            self._logger.error(f'tried to fsf on invalid turn phase')
-            return
-        
-        fsf_event = FsfEvent(self.deck)
-        self._event_bus.emit(fsf_event)
-        self.fsf_monsters = fsf_event.monster_results
-        
-        self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
-        self._logger.info(f'player {self.get_active_player()} entered combat')
-        return
-    
-    @deprecated("")
-    def fsf_select(self, choice: int):
-        if choice < 0 or choice >= len(self.fsf_monsters):
-            raise ValueError("Invalid target for fsf")
-        mon_choice = self.fsf_monsters[choice]
-        if mon_choice.visible:
-            raise Warning("Selected already visible monster for fsf")
-        mon_choice.visible = True
-        self._logger.info(f'player {self.get_active_player()} flipped monster {mon_choice.name}')
-    
-    @deprecated("")
-    def fsf_fight(self, target: int, item: int) -> None:
-        """
-        use item on selected monster to try and lower its heatlh
-        """
-        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            self._logger.error("tried to fight in invalid turn phase")
-        
-        player = self.get_active_player_obj()
-        tar_mon = self.fsf_monsters[target]
-        if not tar_mon.visible:
-            warnings.warn("Fighting monster thats not flipped over")
-        if item < 0:
-            player.health -= 1
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-            self.fsf_monsters = []
-            return
-
-        player.use_item(item_pos=item, target=tar_mon)
-        
-        
-        if tar_mon.health < 1:
-            player.captured_stars.append(tar_mon.stars)
-            player.coins += tar_mon.fight_coins
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-            self.fsf_monsters = []
-            self._logger.info(f'player {player.name} used item {player.items[item].name} on {tar_mon.name} and reduced its health to 0')
-        else:
-            self._logger.info(f'player {player.name} used item {player.items[item].name} on {tar_mon.name}')
-            pass
-
-    @deprecated("")
-    def fsf_spare(self, target: int):
-        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            self._logger.error("tried to spare in invalid turn phase")
-        player = self.get_active_player_obj()
-        tar_mon = self.fsf_monsters[target]
-        if not tar_mon.visible:
-            self._logger.error("tried to spare monster that is not flipped over")
-            return
-        
-        if random.randint(1, 6) >= tar_mon.spare:
-            player.captured_stars.append(tar_mon.stars)
-            self._logger.info(f'player {player.name} spared monster {tar_mon.name}')
-        else:
-            player.health -= 1
-            self._logger.info(f'player {player.name} failed spare on {tar_mon.name}')
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        self.fsf_monsters = []
-        
-    @deprecated("")
-    def fsf_flee(self, target: int):
-        if self.turn_phase != api_wrapper.TurnPhase.IN_COMBAT:
-            self._logger.error("tried to spare in invalid turn phase")
-        player = self.get_active_player_obj()
-        tar_mon = self.fsf_monsters[target]
-        if not tar_mon.visible:
-            self._logger.error("tried to spare monster that is not flipped over")
-            return
-        
-        if tar_mon.flee_coins > 0:
-            player.coins += tar_mon.flee_coins
-            self._logger.info(f'player {player.name} fleed from {tar_mon.name}')
-        else:
-            player.health -= 1
-            self._logger.info(f'player {player.name} flee spare on {tar_mon.name}')
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-        self.fsf_monsters = []
+        if self.turn_phase == api_wrapper.TurnPhase.TURN_ENDED:
+            self._state_end_turn()
 
     def advance_active_player(self) -> None:
-        '''
-        advances to next turn
-        '''
+        '''advances to next turn'''
         curr = self._active_player
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
-        if self.turn_phase != api_wrapper.TurnPhase.TURN_ENDED:
-            self._logger.warning("advancing turn before all actions taken")
-        self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
         self._logger.info(f'{self._turn_order[curr]} ended turn, started {self._turn_order[new_player]} turn')
 
     def get_active_player(self) -> str | None:
-        return self._turn_order[self._active_player] if self.status == api_wrapper.GameStatus.GAME else None
+        if self.status != api_wrapper.GameStatus.GAME:
+            return None
+
+        return self._turn_order[self._active_player]
     
     def get_active_player_obj(self) -> Player:
         return self.players[self._turn_order[self._active_player]] if self.status == api_wrapper.GameStatus.GAME else None

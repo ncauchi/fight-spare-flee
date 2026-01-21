@@ -29,6 +29,7 @@ class TurnPhase(Enum):
     IN_COMBAT = "IN_COMBAT"
     IN_LEFTOVER_COMBAT = "IN_LEFTOVER_COMBAT"
     SHOPPING = "SHOPPING"
+    FLED = "FLED"
     PVP = "PVP"
     TURN_ENDED = "TURN_ENDED"
 
@@ -56,6 +57,7 @@ class MonsterInfo(BaseModel):
     health: Optional[int] = None
     spare: Optional[int] = None
     flee_coins: Optional[int] = None
+    spare_coins: Optional[int] = None
     fight_coins: Optional[int] = None
 
 
@@ -95,15 +97,16 @@ class ChatRequest(BaseModel):
 
 class ActionRequest(BaseModel):
     choice: PlayerActionChoice
+
+class CombatRequest(BaseModel):
     combat: Optional[PlayerCombatChoice] = None
     target: Optional[int] = -1
-    item: Optional[int] = -1
 
 class ItemChoiceRequest(BaseModel):
-    pass
+    item: Optional[int] = -1
 
 class PlayerChoiceRequest(BaseModel):
-    pass
+    player: str
 
 
 # Server Sent Events

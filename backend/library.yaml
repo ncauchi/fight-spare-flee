@@ -12,3 +12,4 @@ monsters:
     spare: 1
     fight_coins: 3
     flee_coins: -1
+    spare_coins: 2
