@@ -28,30 +28,35 @@ def test_lobby():
 
 @pytest.mark.unit
 def test_game():
+    dev_item = ItemInfo(name="dev_item", text="jajaja 5dmg", target_type=ItemTarget.MONSTER)
     game = GameState("123", "test", "god", "4")
     game.add_player("bob", "aaa")
     game.add_player("god", "bbb")
     game.start()
 
-    assert game.active_player_take_coins() == 2
-    game.advance_active_player()
-    game.active_player_take_coins()
-    game.advance_active_player()
-    item = game.active_player_buy_item()
-    assert item != None
+    game.player_action("bob", PlayerActionChoice.COINS)
+    game.player_action("god", PlayerActionChoice.COINS)
+    game.player_action("bob", PlayerActionChoice.SHOP)
+    assert game.players["bob"].items != None
+    assert game.players["bob"].get_status_hand()[0] == dev_item
 
     players = game.get_status_players()
-    assert game.get_active_player() == "bob"
-    assert game.get_active_player_obj().get_status_hand() == [ItemInfo(name="dev_item", text="jajaja 5dmg", target_type=ItemTarget.MONSTER)]
+    assert game.get_active_player() == "god"
     assert players[0] == PlayerInfo(name='bob', captured_stars=[], ready=False, coins=0, num_items=1, health=4)
     assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=4)
 
-    game.advance_active_player()
-    game.advance_active_player()
-    game.active_player_fsf()
-    monsters = game.get_status_fsf()
+    game.player_action("god", PlayerActionChoice.COMBAT)
+    game.player_select_monster("god", 0, PlayerCombatChoice.SELECT)
+    game.player_select_monster("god", 0, PlayerCombatChoice.SPARE)
 
-    assert game.get_active_player() == "bob"
+    game.player_select_monster("god", 0, PlayerCombatChoice.SELECT)
+    game.player_select_monster("god", 0, PlayerCombatChoice.FLEE)
+    game.player_action("god", PlayerActionChoice.SHOP)
+    game.player_action("god", PlayerActionChoice.END)
+    game.player_select_monster("bob", 0, PlayerCombatChoice.SELECT)
+    game.player_select_item("bob", 0)
+    players = game.get_status_players()
+    assert players[1] == PlayerInfo(name='god',  captured_stars=[1], ready=False, coins=4, num_items=1, health=4)
     assert len(monsters) == 3
     assert monsters == [MonsterInfo(stars=1)]*3
 

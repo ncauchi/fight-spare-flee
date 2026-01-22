@@ -11,5 +11,5 @@ monsters:
     health: 1
     spare: 1
     fight_coins: 3
-    flee_coins: -1
+    flee_coins: 2
     spare_coins: 2
