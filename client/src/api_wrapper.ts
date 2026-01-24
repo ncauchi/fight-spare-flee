@@ -6,13 +6,13 @@ import { Socket } from "socket.io-client";
 // Server -> Client can have args, Client <- server needs to be wrapped in types
 
 // Enums
-export type PlayerActionChoice = "COINS" | "SHOP" | "FSF" | "COMBAT" | "END" | "CANCEL";
+export type PlayerActionChoice = "COINS" | "SHOP" | "COMBAT" | "END" | "CANCEL";
 
 export type PlayerCombatChoice =  "FIGHT" | "SPARE" | "FLEE" | "SELECT";
 
-export type GameStatus = "LOBBY" | "GAME" | "ENDED";
+export type GameStatus = "LOBBY" | "GAME" | "END";
 
-export type TurnPhase = "CHOOSING_ACTION" | "IN_COMBAT" | "SHOPPING" | "USING_SPECIAL" | "TURN_ENDED";
+export type TurnPhase = "CHOOSING_ACTION" | "IN_COMBAT" | "IN_LEFTOVER_COMBAT" | "SHOPPING" | "FLED" | "PVP" | "TURN_ENDED";
 
 export type ItemTarget = "MONSTER" | "PLAYER" | "ITEM" | "NONE"
 
@@ -35,6 +35,7 @@ export interface MonsterInfo {
   health?: number;
   spare?: number;
   flee_coins?: number;
+  spare_coins?: number;
   fight_coins?: number;
 }
 
@@ -82,17 +83,25 @@ export interface LobbyReadyRequest {
 
 export interface StartGameRequest {}
 
-export interface EndTurnRequest {}
-
 export interface ChatRequest {
   text: string;
 }
 
 export interface ActionRequest {
   choice: PlayerActionChoice;
-  combat?: PlayerCombatChoice;
-  target?: number;
-  item?: number;
+}
+
+export interface CombatRequest {
+  combat: PlayerCombatChoice;
+  target: number;
+}
+
+export interface ItemChoiceRequest {
+  item: number;
+}
+
+export interface PlayerChoiceRequest {
+  player: string
 }
 
 // ==================== API WRAPPER CLASS ====================
@@ -107,29 +116,48 @@ export class GameAPI {
   requestJoinGame(game_id: string, player_name: string) {
     const data: JoinRequest = { game_id: game_id, player_name: player_name };
     this.socket.emit("JOIN", data);
+    console.log("sending join request to server")
   }
 
   requestSetLobbyReady(ready: boolean) {
     const req: LobbyReadyRequest = { ready: ready };
     this.socket.emit("LOBBY_READY", req);
+    console.log("sending lobby ready request to server")
   }
 
   requestStartGame() {
     this.socket.emit("START_GAME", {});
-  }
-
-  requestEndTurn() {
-    this.socket.emit("END_TURN", {});
+    console.log("sending start game request to server")
   }
 
   requestSendChat(text: string) {
     const req: ChatRequest = { text: text };
     this.socket.emit("CHAT", req);
+    console.log("sending chat request to server")
   }
 
-  requestSendAction(choice: PlayerActionChoice, combat?: PlayerCombatChoice,  target?: number, item?: number) {
-    const req: ActionRequest = { choice: choice, combat: combat, target: target, item: item };
+  requestSendAction(choice: PlayerActionChoice) {
+    const req: ActionRequest = { choice: choice };
     this.socket.emit("ACTION", req);
+    console.log("sending action request to server")
+  }
+
+  requestSendCombat(choice: PlayerCombatChoice, target: number) {
+    const req: CombatRequest = { combat: choice, target: target };
+    this.socket.emit("COMBAT", req);
+    console.log("sending combat request to server")
+  }
+
+  requestSendItemChoice(item: number) {
+    const req: ItemChoiceRequest = { item: item };
+    this.socket.emit("ITEM_CHOICE", req);
+    console.log("sending item select request to server")
+  }
+
+  requestSendPlayerChoice(target: string) {
+    const req: PlayerChoiceRequest = { player: target };
+    this.socket.emit("PLAYER_CHOICE", req);
+    console.log("sending player select request to server")
   }
 
   // Server → Client event listener

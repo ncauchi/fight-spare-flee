@@ -57,28 +57,8 @@ def test_game():
     game.player_select_item("bob", 0)
     players = game.get_status_players()
     assert players[1] == PlayerInfo(name='god',  captured_stars=[1], ready=False, coins=4, num_items=1, health=4)
-    assert len(monsters) == 3
-    assert monsters == [MonsterInfo(stars=1)]*3
+    
 
-    game.fsf_select(0)
-    game.fsf_fight(0, 0)
-    players = game.get_status_players()
-    monsters = game.get_status_fsf()
-
-    assert players[0] == PlayerInfo(name='bob', captured_stars=[1], ready=False, coins=3, num_items=0, health=4)
-    assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=4)
-    assert game.fsf_monsters == []
-
-    game.advance_active_player()
-    assert game.get_active_player() == "god"
-    game.active_player_fsf()
-    monsters = game.get_status_fsf()
-    game.fsf_select(0)
-    game.fsf_fight(1, -1)
-    players = game.get_status_players()
-
-    assert players[0] == PlayerInfo(name='bob', captured_stars=[1], ready=False, coins=3, num_items=0, health=4)
-    assert players[1] == PlayerInfo(name='god',  captured_stars=[], ready=False, coins=2, num_items=0, health=3)
 
     
 

@@ -5,9 +5,8 @@ import { Spinner, Button, Stack } from "react-bootstrap";
 import { useRef, useState } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
-import ChoosingActionBox from "./ChoosingActionBox";
 import BoardPlayerHand from "./BoardPlayerHand";
-import BoardCards from "./BoardCards";
+import MonsterCard from "./MonsterCard";
 import type { PlayerCombatChoice } from "../api_wrapper";
 
 function Board() {
@@ -19,9 +18,7 @@ function Board() {
   }
 
   const [flipped, setFlipped] = useState(false);
-  const selectedItemRef = useRef(-1);
-  const selectedMonsterRef = useRef(-1);
-  const [waitingAction, setWaitingAction] = useState(false);
+  const [selectedMon, setSelectedMon] = useState(-1);
   const playerName = usePlayerName();
   const opponents = gameState?.players.filter((p) => {
     return p.name != playerName;
@@ -32,61 +29,9 @@ function Board() {
     setFlipped(!flipped);
   };
 
-  const handleNextTurn = () => {
-    api.requestEndTurn();
-  };
-  const handleHandItemClick = (idx: number) => {
-    if (gameState.turn_phase != "IN_COMBAT" || !waitingAction) {
-      return;
-    }
-    setWaitingAction(false);
-    api.requestSendAction("COMBAT", "FIGHT", selectedMonsterRef.current, idx);
-  };
-  const handleBoardItemClick = (idx: number) => {};
-
-  const handleBoardMonsterClick = (idx: number, selection: PlayerCombatChoice) => {
-    if (gameState.turn_phase != "IN_COMBAT" || waitingAction) {
-      return;
-    }
-    console.log(`selected monster ${idx}`);
-    if (selection == "SELECT") {
-      selectedMonsterRef.current = idx;
-      api.requestSendAction("COMBAT", "SELECT", idx);
-    } else if (selection == "FIGHT") {
-      setWaitingAction(true);
-      console.log("Waiting to select item");
-    } else if (selection == "SPARE") {
-      api.requestSendAction("COMBAT", "SPARE", idx);
-    } else if (selection == "FLEE") {
-      api.requestSendAction("COMBAT", "FLEE", idx);
-    }
-  };
-
-  const handleDeckClick = () => {
-    console.log("deck clicked");
-    if (gameState.turn_phase == "CHOOSING_ACTION") {
-      api.requestSendAction("FSF");
-    } else {
-      console.warn("wrong turn phase for that");
-    }
-  };
-
-  const handleShopClick = () => {
-    console.log("shop clicked");
-    if (gameState.turn_phase == "CHOOSING_ACTION" || gameState.turn_phase == "SHOPPING") {
-      api.requestSendAction("SHOP");
-    } else {
-      console.warn("wrong turn phase for that");
-    }
-  };
-
-  const handleCoinsClick = () => {
-    console.log("coins clicked");
-    if (gameState.turn_phase == "CHOOSING_ACTION") {
-      api.requestSendAction("COINS");
-    } else {
-      console.warn("wrong turn phase for that");
-    }
+  const handleMonsterSelect = (s: PlayerCombatChoice, i: number) => {
+    setSelectedMon(i);
+    api.requestSendCombat(s, i);
   };
 
   return (
@@ -109,19 +54,36 @@ function Board() {
       ))}
       {myTurn && (
         <>
-          <Button variant="primary" className={"next-turn-button"} onClick={handleNextTurn}>
+          <Button variant="primary" className={"next-turn-button"} onClick={() => api.requestSendAction("END")}>
             <h3>Next Turn</h3>
           </Button>
         </>
       )}
-      <BoardPlayerHand onItemClick={handleHandItemClick} />
-      <BoardCards
-        selectBoardItem={handleBoardItemClick}
-        selectBoardMonster={handleBoardMonsterClick}
-        deckClick={handleDeckClick}
-        shopClick={handleShopClick}
-        coinsClick={handleCoinsClick}
-      />
+      <BoardPlayerHand onItemClick={(i) => api.requestSendItemChoice(i)} />
+      <Stack direction="vertical" className="deck-shop-coins-stack">
+        <Stack direction="horizontal" gap={4}>
+          <div onClick={() => api.requestSendAction("COMBAT")}>
+            <h2>Deck: {gameState.deckSize}</h2>
+          </div>
+          <div onClick={() => api.requestSendAction("SHOP")}>
+            <h2>Shop: {gameState.shopSize}</h2>
+          </div>
+          <div onClick={() => api.requestSendAction("COINS")}>
+            <h2>Coin Stash</h2>
+          </div>
+        </Stack>
+        <Stack direction="horizontal" gap={2}>
+          {gameState.monsters?.map((mon, i) => (
+            <MonsterCard
+              key={i}
+              isActivePlayer={myTurn}
+              data={mon}
+              onClick={(s) => handleMonsterSelect(s, i)}
+              isSelected={selectedMon == i}
+            />
+          ))}
+        </Stack>
+      </Stack>
     </div>
   );
 }

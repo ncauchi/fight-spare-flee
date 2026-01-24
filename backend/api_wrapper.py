@@ -89,9 +89,6 @@ class LobbyReadyRequest(BaseModel):
 class StartGameRequest(BaseModel):
     pass
 
-class EndTurnRequest(BaseModel):
-    pass
-
 class ChatRequest(BaseModel):
     text: str
 

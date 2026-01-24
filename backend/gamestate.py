@@ -6,8 +6,9 @@ import os
 import api_wrapper
 from warnings import deprecated
 import yaml
-from item_effects import EFFECT_REGISTRY
+from item_effects import EFFECT_REGISTRY, ITEM_REGISTRY, MONSTER_REGISTRY
 from app_logging import AppLogger
+from game_events import *
 
 
 class Item:
@@ -30,6 +31,14 @@ class Item:
                 self.effect = effect
                 self.params = data["effect"]["params"]
                 self.target_type = target
+    
+    @staticmethod
+    def construct_from_id(id: str) -> Item:
+        if id not in ITEM_REGISTRY.keys():
+            raise KeyError(f"Item {id} does not exit")
+        cur_item: dict = ITEM_REGISTRY[id]
+        return Item(name=id, data=cur_item)
+
 
     def activate(self, target: Player | Monster | Item | None = None):
         type_mapping = {
@@ -77,6 +86,13 @@ class Monster:
         self.spare_coins = data["spare_coins"]
         self.fight_coins = data["fight_coins"]
         self.max_health = data["health"]
+
+    @staticmethod
+    def construct_from_id(id: str) -> Monster:
+        if id not in MONSTER_REGISTRY.keys():
+            raise KeyError(f"monster {id} does not exit")
+        cur_mon: dict = MONSTER_REGISTRY[id]
+        return Monster(name=id, data=cur_mon)
 
     def get_api_status(self):
         if self.visible:
@@ -134,82 +150,26 @@ class Player:
         )
 
 
-class EventType(Enum):
-    FSF = auto()
-    COINS = auto()
-    SHOP = auto()
-    FIGHT = auto()
-    SPARE = auto()
-    FLEE = auto()
+class CombatEvent(Event):
+    monsters: list[Monster]
+    def __init__(self, monsters: list[Monster]):
+        super().__init__(type=EventType.COMBAT)
+        self.monsters = monsters
 
-
-class Event:
-
-    type: EventType
-    active: bool
-
-    def __init__(self, type: EventType):
-        self.active = True
-        self.type = type
-
-class FsfEvent(Event):
-    monster_results: list[Monster]
-    def __init__(self, deck: list[Monster]):
-        super().__init__(type=EventType.FSF)
-        self.monster_results = random.sample(deck, 3)
-        for monster in self.monster_results:
-            deck.remove(monster)
-
-class TakeCoinEvent(Event):
-    amount_to_take: int
-    def __init__(self):
-        super().__init__(type=EventType.COINS)
-        self.amount_to_take = 2
-
-class BuyItemEvent(Event):
-    item: Item
-    def __init__(self, shop: list[Item]):
-        super().__init__(type=EventType.SHOP)
-        self.item = shop.pop()
-        
-
-
-class EventBus:
-
-    listeners: dict[str, list[Callable]]
-
-    def __init__(self):
-        self.listeners = {}
-
-    def subscribe(self, event_type: str, callback: Callable) -> Callable:
-        '''
-        Used to subscribe a function to a specific return type, returns an unsubscribe function that can be called to delink the function.
-        The function will be called and passed the event whenever an event of that type happens.
-        '''
-        if event_type not in get_args(Event.__annotations__['type']):
-            raise ValueError(f"Invalid event type: '{event_type}'.")
-        
-        if event_type in self.listeners:
-            self.listeners[event_type].append(callback)
+class ShopEvent(Event):
+    items: list[Item]
+    def __init__(self, player: str, item: Item = None, items: list[Item] = []):
+        super().__init__(type=EventType.SHOP, player=player)
+        if item:
+            self.items = [item]
         else:
-            self.listeners[event_type] = [callback]
+            self.items = items
 
-    def emit(self, event: Event):
-        if not event:
-            raise ValueError("Tried to emit non-valid event")
-        
-        if event.type not in self.listeners:
-            return
-        
-        for callback in self.listeners[event.type]:
-            callback(event)
-            if not event.active:
-                return
-
-
-
-
-
+class CoinsEvent(Event):
+    coins: int
+    def __init__(self, coins: int):
+        super().__init__(type=EventType.COINS)
+        self.coins = coins
 
 class GameState:
     '''
@@ -306,6 +266,7 @@ class GameState:
         self.players = {}
         self.status = api_wrapper.GameStatus.LOBBY
         self._logger = AppLogger(name=f"game_{name}")
+        self._event_bus = EventBus()
 
         self._allowed_items = allowed_items
         self._allowed_monsters = allowed_monsters
@@ -361,7 +322,6 @@ class GameState:
         order = [p for p in self.players.keys()]
         self._turn_order = order
         self._active_player = 0
-        self._event_bus = EventBus()
         self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
         self._combat_sbs = None
         self._flee_combat_sbs = None
@@ -372,29 +332,32 @@ class GameState:
     def _state_choosing_action(self, player: str, action: api_wrapper.PlayerActionChoice = None, item: int = None):
         if item != None:
             self._logger.info("pvp item placeholder")
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
             return
         player_obj = self.players[player]
-        match action:
-            case api_wrapper.PlayerActionChoice.COINS:
-                coins_event = TakeCoinEvent()
-                self._event_bus.emit(event=coins_event)
-                player_obj.coins += coins_event.amount_to_take
-                self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-                self._logger.info(f'player {self.get_active_player()} took coins')
-            case api_wrapper.PlayerActionChoice.SHOP:
-                self._buy_item(player=player_obj)
-            case api_wrapper.PlayerActionChoice.COMBAT:
-                fsf_event = FsfEvent(self.deck)
-                self._event_bus.emit(fsf_event)
-                if self._combat_sbs:
-                    self._logger.error("tried to start combat but combat substate already exists")
-                else:
-                    self._combat_sbs = self.CombatSubState(monsters=fsf_event.monster_results)
-                self._logger.info(f"combat started against {len(fsf_event.monster_results)} monsters")
-                self.turn_phase = api_wrapper.TurnPhase.IN_COMBAT
-            case _:
-                pass
+        if action == api_wrapper.PlayerActionChoice.COINS:
+            coins_event = CoinsEvent(2)
+            self._event_bus.emit(event=coins_event)
+            player_obj.coins += coins_event.coins
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
+            self._logger.info(f'player {self.get_active_player()} took coins')
+        elif action == api_wrapper.PlayerActionChoice.SHOP:
+            self._buy_item(player=player_obj)
+        elif action == api_wrapper.PlayerActionChoice.COMBAT:
+            if len(self.deck) < 3:
+                self.__init_deck()
+            monster_results = [self.deck.pop(i) for i in range(3)]
+            del self.deck[:3]
+            combat_event = CombatEvent(monsters=monster_results)
+            self._event_bus.emit(combat_event)
+            if self._combat_sbs:
+                self._logger.error("tried to start combat but combat substate already exists")
+            else:
+                self._combat_sbs = self.CombatSubState(monsters=combat_event.monsters)
+            self._logger.info(f"combat started against {len(combat_event.monsters)} monsters")
+            self._change_turn_phase(api_wrapper.TurnPhase.IN_COMBAT)
+        else:
+            self._logger.warning(f"invalid action {action}")
+
         return
 
     def _state_shopping(self, player: str, action: api_wrapper.PlayerActionChoice = None):
@@ -406,7 +369,7 @@ class GameState:
         
         if len(player_obj.items) > 4:
             self._logger.info(f'player {player_obj.name} tried to buy an item but is holding too many')
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
             return            
         self._buy_item(player=player_obj)
 
@@ -457,7 +420,6 @@ class GameState:
             self._end_combat()
             return
         self.advance_active_player()
-        self.turn_phase = api_wrapper.TurnPhase.CHOOSING_ACTION
         
 
     def _buy_item(self, player: Player):
@@ -466,13 +428,17 @@ class GameState:
             return
         if len(player.items) > 4:
             self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
-            return            
-        shop_event = BuyItemEvent(self.shop)
+            return    
+        item = self.shop.pop(0)        
+        shop_event = ShopEvent(player=player.name, item=item)
         player.coins -= 2
         self._event_bus.emit(shop_event)
-        self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED if player.coins < 2 else api_wrapper.TurnPhase.SHOPPING
-        player.items.append(shop_event.item)
-        self._logger.info(f'player {player.name} bought item {shop_event.item.name}')
+        if player.coins < 2:
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
+        else: 
+            self._change_turn_phase(api_wrapper.TurnPhase.SHOPPING)
+        player.items += shop_event.items
+        self._logger.info(f'player {player.name} bought item(s) {[i.name for i in shop_event.items]}')
 
     def _combat_select(self, player: Player, monster_idx: int):
         """SELECT: Reveal a face-down monster"""
@@ -483,8 +449,10 @@ class GameState:
             return
         if self._combat_sbs.state != "selecting":
             self._logger.warning(f'{player.name} tried to select in wrong phase')
+            return
 
         monster.visible = True
+        self._event_bus.emit(Event(type=EventType.FLIP))
         self._logger.info(f'{player.name} revealed {monster.name}')
         self._combat_sbs.state = "deciding"
         self._combat_sbs.flipped_idx = monster_idx
@@ -522,6 +490,8 @@ class GameState:
         else:
             self._combat_sbs.state = "fighting"
 
+        self._event_bus.emit(Event(type=EventType.FIGHT))
+
     def _combat_spare(self, player: Player, monster_idx: int):
         """SPARE: Roll dice to spare monster"""
         monster = self._combat_sbs.monsters[monster_idx]
@@ -549,6 +519,8 @@ class GameState:
             self._logger.info(f'{player.name} failed to spare {monster.name} (rolled {roll})')
             self._end_combat()
 
+        self._event_bus.emit(Event(type=EventType.SPARE))
+
         
     def _combat_flee(self, player: Player, monster_idx: int):
         """FLEE: Flee from monster"""
@@ -562,8 +534,9 @@ class GameState:
             player.coins += monster.flee_coins
             self._combat_sbs.flee_monster(monster_idx)
             self._combat_sbs.state = "selecting"
-            self.turn_phase = api_wrapper.TurnPhase.FLED
+            self._change_turn_phase(api_wrapper.TurnPhase.FLED)
             self._logger.info(f'{player.name} fled from {monster.name}, gained {monster.flee_coins} coins')
+            self._event_bus.emit(Event(type=EventType.FLEE))
         else:
             self._logger.warning(f'{player.name} tried to flee from a monster they can\'t escape')
 
@@ -575,14 +548,13 @@ class GameState:
             return
         
         if self._combat_sbs.has_leftover_monsters():
-            self.turn_phase = api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT
+            self._change_turn_phase(api_wrapper.TurnPhase.IN_LEFTOVER_COMBAT)
             self._flee_combat_sbs = self.FleeCombatSubState(monsters=self._combat_sbs.leftover_queue, 
                                                             original_player=self.get_active_player(), 
                                                             order=[p for p in self._turn_order if p != self.get_active_player()])
             self._logger.info(f'leftover monsters remain, entering leftover combat')
         else:
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
-            self._state_end_turn()
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
 
         self._combat_sbs = None
 
@@ -640,6 +612,7 @@ class GameState:
             self._advance_leftover_queue()
         else:
             self._flee_combat_sbs.state = "fighting"
+        self._event_bus.emit(Event(type=EventType.FIGHT))
         
     def _leftover_spare(self, player: Player, monster_idx: int):
         monster = self._flee_combat_sbs.monsters[monster_idx]
@@ -660,6 +633,7 @@ class GameState:
             player.health -= 1
             self._logger.info(f'{player.name} failed to spare {monster.name} (rolled {roll})')
             self._advance_leftover_queue
+        self._event_bus.emit(Event(type=EventType.SPARE))
 
     def _leftover_pass(self, player_name: str):
         """Player passes on leftover combat"""
@@ -672,10 +646,12 @@ class GameState:
         if self._flee_combat_sbs.is_finished():
             self._logger.info('leftover combat complete')
             self._combat_sbs = None
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
         else:
             self._flee_combat_sbs.order.pop(0)
             self._logger.info(f'next leftover player: {self._flee_combat_sbs.order[0]}')
+            self._event_bus.emit(Event(type=EventType.TURN))
+
 
 
     def player_action(self, player: str, action: api_wrapper.PlayerActionChoice):
@@ -699,7 +675,7 @@ class GameState:
             self._logger.warning(f'tried to do action {action.name} while in state {self.turn_phase.name}')
         
         if action == api_wrapper.PlayerActionChoice.END:
-            self.turn_phase = api_wrapper.TurnPhase.TURN_ENDED
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
         else:
             valid_states[self.turn_phase](player=player, action=action)
 
@@ -780,6 +756,13 @@ class GameState:
         new_player = (curr + 1)%len(self._turn_order)
         self._active_player = new_player
         self._logger.info(f'{self._turn_order[curr]} ended turn, started {self._turn_order[new_player]} turn')
+        self._change_turn_phase(api_wrapper.TurnPhase.CHOOSING_ACTION)
+
+    def _change_turn_phase(self, new_phase: api_wrapper.TurnPhase):
+        if not self.turn_phase or self.turn_phase != new_phase:
+            self.turn_phase = new_phase
+            self._event_bus.emit(Event(type=EventType.TURN))
+        
 
     def get_active_player(self) -> str | None:
         if self.status != api_wrapper.GameStatus.GAME:
@@ -791,40 +774,24 @@ class GameState:
         return self.players[self._turn_order[self._active_player]] if self.status == api_wrapper.GameStatus.GAME else None
     
     def __init_deck(self):
-        library_path = os.path.join(os.path.dirname(__file__), 'library.yaml')
-        with open(library_path, 'r') as file:
-            try:
-                data = yaml.load(file, yaml.Loader)
-                self.deck = [Monster()]*40
-                for i in range(40):
-                    if self._allowed_monsters == "*":
-                        mon_name = random.choice(list(data["monsters"].keys()))
-                    else:
-                        mon_name = random.choice(self._allowed_monsters)
-                    cur_mon: dict = data["monsters"][mon_name]
-                    self.deck[i] = Monster(name=mon_name, data=cur_mon)
-                self._logger.info("intialized monster deck")
-
-            except yaml.YAMLError as exc:
-                print(exc)
+        self.deck = [Monster()]*40
+        for i in range(40):
+            if self._allowed_monsters == "*":
+                mon_name = random.choice(list(MONSTER_REGISTRY.keys()))
+            else:
+                mon_name = random.choice(self._allowed_monsters)
+            self.deck[i] = Monster.construct_from_id(mon_name)
+        self._logger.info("intialized monster deck")
         
     def __init_shop(self):
-        library_path = os.path.join(os.path.dirname(__file__), 'library.yaml')
-        with open(library_path, 'r') as file:
-            try:
-                data = yaml.load(file, yaml.Loader)
-                self.shop = [Item()]*40
-                for i in range(40):
-                    if self._allowed_items == "*":
-                        item_name = random.choice(list(data["items"].keys()))
-                    else:
-                        item_name = random.choice(self._allowed_items)
-                    cur_item = data["items"][item_name]
-                    self.shop[i] = Item(name=item_name, data=cur_item)
-                self._logger.info("intialized item shop")
-
-            except yaml.YAMLError as exc:
-                print(exc)
+        self.shop = [Item()]*40
+        for i in range(40):
+            if self._allowed_items == "*":
+                item_name = random.choice(list(ITEM_REGISTRY.keys()))
+            else:
+                item_name = random.choice(self._allowed_items)
+            self.shop[i] = Item.construct_from_id(item_name)
+        self._logger.info("intialized item shop")
 
     def __del__(self):
         self._logger.critical("GAME CRASH")

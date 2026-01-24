@@ -132,3 +132,78 @@
   left: 50%;
   transform: translate(-50%, -50%);
 }
+
+/* MonsterCard flip animation styles */
+.monster-card-container {
+  width: 5rem;
+  height: 7rem;
+  margin: 0.75rem;
+  perspective: 1000px;
+}
+
+.monster-card-flipper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s;
+  transform-style: preserve-3d;
+}
+
+.monster-card-flipper.flipped {
+  transform: rotateY(180deg);
+}
+
+.monster-card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+  backface-visibility: hidden;
+  background-color: rgb(123, 49, 49);
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: white;
+}
+
+.monster-card-back {
+  /* No rotation needed - default position */
+}
+
+.monster-card-front {
+  transform: rotateY(180deg);
+}
+
+/* Selection glow effect */
+.monster-card-container.selected .monster-card-flipper {
+  box-shadow: 0 0 1.5rem 0 rgba(255, 255, 255, 1);
+  border-radius: 1rem;
+}
+
+/* Button container and styling */
+.monster-card-buttons {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.monster-card-button {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.deck-shop-coins-stack {
+  position: absolute;
+  bottom: 50%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.deck-shop-coins-stack > div > div {
+  cursor: pointer;
+  white-space: nowrap;
+}

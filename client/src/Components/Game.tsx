@@ -167,10 +167,11 @@ function Game() {
         boardItems: items,
       };
     });
+    console.log("recieved board update from server", monsters);
   };
 
   const handleStartGame = (first_player: string) => {
-    console.log("Starting Game...");
+    console.log("Starting Game");
     const firstName = first_player;
     setGameState((prevState) => {
       if (!prevState) return undefined;

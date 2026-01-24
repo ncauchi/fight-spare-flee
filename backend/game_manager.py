@@ -4,7 +4,8 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
-from gamestate import GameState, Player, EventType
+from gamestate import GameState
+from game_events import EventType, EventBus, Event
 import threading
 import requests
 from test import get_local_ip
@@ -76,7 +77,7 @@ def JOIN(request_data: JoinRequest, sid):
 
         with connections_lock:
             connections[sid] = (player_name, game_id)
-        game.players[player_name] = Player(name=player_name, sid=sid)
+        game.add_player(player_name=player_name, sid=sid)
         players_snapshot = game.get_status_players()
 
         init_package = {
@@ -140,18 +141,6 @@ def START_GAME(data: StartGameRequest, sid):
     logger.info(f'game "{game_snapshot._name}" starting')
     fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'Starting game...'),include_self=False) 
     eventlet.spawn(start_game, game_id)
-
-
-@fsf_api.event_handler(EndTurnRequest)
-def END_TURN(data: EndTurnRequest, sid):
-    player_name, game_id = player_from_sid(sid)
-
-    with game_locks[game_id]:
-        game = games[game_id]
-        game.advance_active_player()
-        new_active_name = game.get_active_player()
-    
-    fsf_api.emit_turn_event(game_id, new_active_name, phase=TurnPhase.CHOOSING_ACTION)
     
 
 @fsf_api.event_handler(ChatRequest)
@@ -164,49 +153,34 @@ def CHAT(data: ChatRequest, sid):
 @fsf_api.event_handler(ActionRequest)
 def ACTION(data: ActionRequest, sid):
     player_name, game_id = player_from_sid(sid)
-    choice = data.choice
+    logger.info(f'recieved action request from game {player_name}')
     with game_locks[game_id]:
         game = games[game_id]
-        if player_name != game.get_active_player():
-            logger.error(f'player "{player_name}" tried take an action out of turn')
-            return
-        match choice:
-            case PlayerActionChoice.COINS:
-                game.active_player_take_coins()
-            case PlayerActionChoice.SHOP:
-                game.active_player_buy_item()
-            case PlayerActionChoice.FSF:
-                game.active_player_fsf()
-            case PlayerActionChoice.END:
-                game.advance_active_player()
-            case PlayerActionChoice.COMBAT:
-                if not data.combat:
-                    logger.error(f'player "{player_name}" tried to do invalid combat action')
-                match data.combat:
-                    case PlayerCombatChoice.SELECT:
-                        game.fsf_select(data.target)
-                    case PlayerCombatChoice.FIGHT:
-                        game.fsf_fight(data.target, data.item)
-                    case PlayerCombatChoice.SPARE:
-                        game.fsf_spare(data.target)
-                    case PlayerCombatChoice.FLEE:
-                        game.fsf_flee(data.target)
+        game.player_action(player=player_name, action=data.choice)
 
-        # Capture state before releasing lock
-        players_snapshot = game.get_status_players()
-        board_snapshot = game.get_status_board()
-        hand_snapshot = game.get_active_player_obj().get_status_hand()
-        active_player = game.get_active_player()
-        turn_phase = game.turn_phase
+@fsf_api.event_handler(CombatRequest)
+def COMBAT(data: CombatRequest, sid):
+    player_name, game_id = player_from_sid(sid)
+    logger.info(f'recieved combat action from game {player_name}')
+    with game_locks[game_id]:
+        game = games[game_id]
+        game.player_select_monster(player=player_name, choice=data.target, combat_action=data.combat)
 
-    # Emit events outside the lock
-    fsf_api.emit_players_event(game_id, players=players_snapshot)
-    fsf_api.emit_board_event(game_id, **board_snapshot)
-    fsf_api.emit_hand_event(sid, items=hand_snapshot)
-    fsf_api.emit_turn_event(game_id, active=active_player, phase=turn_phase)
-                
+@fsf_api.event_handler(ItemChoiceRequest)
+def ITEM_CHOICE(data: ItemChoiceRequest, sid):
+    player_name, game_id = player_from_sid(sid)
+    logger.info(f'recieved item selection from game {player_name}')
+    with game_locks[game_id]:
+        game = games[game_id]
+        game.player_select_item(player=player_name, choice=data.item)
 
-
+@fsf_api.event_handler(PlayerChoiceRequest)
+def PLAYER_CHOICE(data: PlayerChoiceRequest, sid):
+    player_name, game_id = player_from_sid(sid)
+    logger.info(f'recieved player selection from game {player_name}')
+    with game_locks[game_id]:
+        game = games[game_id]
+        game.player_select_player(player=player_name, choice=data.player)
     
 
 def cleanup_disconnect(sid):
@@ -244,6 +218,38 @@ def start_game(game_id):
     eventlet.sleep(0.1)
     fsf_api.emit_start_game_event(game_id, first_player)
 
+def update_game_players(game_id: str):
+    with game_locks[game_id]:
+        game = games[game_id]
+        game_name = game._name
+        player_snapshot = game.get_status_players()
+    
+    fsf_api.emit_players_event(game_id, players=player_snapshot)
+    logger.info(f'updating players in game {game_name}')
+
+def update_game_board(game_id: str):
+    with game_locks[game_id]:
+        game = games[game_id]
+        game_name = game._name
+        board_snapshot = game.get_status_fsf()
+        deck_size = len(game.deck)
+        shop_size = len(game.shop)
+    
+    fsf_api.emit_board_event(game_id, deck_size=deck_size, shop_size=shop_size, monsters=board_snapshot)
+    logger.info(f'updating board in game {game_name}')
+
+def update_game_player_hand(game_id: str, player: str):
+    with game_locks[game_id]:
+        game = games[game_id]
+        game_name = game._name
+        player_sid = game.players[player].sid
+        hand_snapshot = game.players[player].get_status_hand()
+    
+    fsf_api.emit_hand_event(player_sid, hand_snapshot)
+    logger.info(f'updating {player}\'s hand in game {game_name}')
+
+
+
 @app.route("/internal/<game_id>", methods = ["POST"])
 def create_game(game_id):
 
@@ -253,6 +259,21 @@ def create_game(game_id):
         return jsonify({"error": "no data"}), 400
 
     new_game = GameState(game_id, data["name"], data["owner"], data["max_players"])
+    hand_change_events = [EventType.SHOP, EventType.FIGHT]
+    board_change_events = [EventType.COMBAT, EventType.FLEE, EventType.FLIP, EventType.SPARE]
+    player_change_events = [EventType.SHOP, EventType.FIGHT, EventType.FLEE, EventType.SPARE, EventType.TURN, EventType.COINS]
+    update_hand_func = lambda e : update_game_player_hand(game_id, e.player)
+    update_board_func = lambda e : update_game_board(game_id)
+    update_players_func = lambda e : update_game_players(game_id)
+    
+    for e in hand_change_events:
+        new_game._event_bus.subscribe(event_type=e, callback=update_hand_func)
+    for e in board_change_events:
+        print(f'binding {update_board_func.__name__}, {update_board_func} to {e}')
+        new_game._event_bus.subscribe(event_type=e, callback=update_board_func)
+    for e in player_change_events:
+        print(f'binding {update_players_func.__name__}, {update_players_func} to {e}')
+        new_game._event_bus.subscribe(event_type=e, callback=update_players_func)
 
     with games_lock:
         games[game_id] = new_game
@@ -263,6 +284,9 @@ def create_game(game_id):
 
 def player_from_sid(sid: Any):
     with connections_lock:
+        if sid not in connections:
+            logger.warning("tried to decode invalid sid")
+            return
         player_name, game_id = connections[sid]
 
     with games_lock:
