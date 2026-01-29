@@ -16,37 +16,6 @@
   top: 0%;
 }
 
-.card {
-  height: 15rem;
-  width: 10rem;
-  transition: transform 0.5s;
-  position: absolute;
-  transform-style: preserve-3d;
-  border-radius: 1rem;
-  top: 0;
-
-  &.flipped {
-    transform: rotateY(180deg);
-  }
-}
-
-.card-front,
-.card-back {
-  position: absolute;
-  height: 100%;
-  width: 100%;
-  border-radius: 1rem;
-  backface-visibility: hidden;
-}
-.card-front {
-  background-color: red;
-}
-
-.card-back {
-  background-color: blue;
-  transform: rotateY(180deg);
-}
-
 .player-container {
   &.position {
     position: absolute;
@@ -56,8 +25,8 @@
   }
 
   &.container {
-    height: 7rem;
     width: 10rem;
+    min-height: 7rem;
     padding: 0;
     background-color: #4a4a4a;
     border-radius: 1rem;
@@ -108,21 +77,44 @@
     transform: translate(0, -1rem) rotate3d(1, 0.5, 0, 10deg);
   }
 
-  
+  &.selected {
+    box-shadow: 0 0 1.5rem 0 rgba(255, 255, 255, 1);
+    border-radius: 1rem;
+  }
 }
 
 .monster-card {
-  background-color: rgb(123, 49, 49);
   width: 5rem;
   height: 7rem;
-  transition: transform var(--hover-speed);
-  border-radius: 1rem;
+  transition: transform 0.5s;
+  border-radius: 0.5rem;
+  transform-style: preserve-3d;
 
-  &.hovering {
-    transform: translate(0, -1rem) rotate3d(1, 0.5, 0, 10deg);
+  &.selected {
+    box-shadow: 0 0 1.5rem 0 rgba(255, 255, 255, 1);
+    border-radius: 1rem;
   }
 
-  
+  &.flipped {
+    transform: rotateY(180deg);
+  }
+}
+
+.monster-card-front,
+.monster-card-back {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  border-radius: 1rem;
+  backface-visibility: hidden;
+}
+.monster-card-front {
+  background-color: rgb(255, 255, 255);
+  transform: rotateY(180deg);
+}
+
+.monster-card-back {
+  background-color: rgb(144, 155, 255);
 }
 
 .choosing-action-box {
@@ -134,14 +126,14 @@
 }
 
 /* MonsterCard flip animation styles */
-.monster-card-container {
+.amonster-card-container {
   width: 5rem;
   height: 7rem;
   margin: 0.75rem;
   perspective: 1000px;
 }
 
-.monster-card-flipper {
+.amonster-card-flipper {
   position: relative;
   width: 100%;
   height: 100%;
@@ -149,11 +141,11 @@
   transform-style: preserve-3d;
 }
 
-.monster-card-flipper.flipped {
+.amonster-card-flipper.flipped {
   transform: rotateY(180deg);
 }
 
-.monster-card-face {
+.amonster-card-face {
   position: absolute;
   width: 100%;
   height: 100%;
@@ -168,29 +160,29 @@
   color: white;
 }
 
-.monster-card-back {
+.amonster-card-back {
   /* No rotation needed - default position */
 }
 
-.monster-card-front {
+.amonster-card-front {
   transform: rotateY(180deg);
 }
 
 /* Selection glow effect */
-.monster-card-container.selected .monster-card-flipper {
+.amonster-card-container.selected .monster-card-flipper {
   box-shadow: 0 0 1.5rem 0 rgba(255, 255, 255, 1);
   border-radius: 1rem;
 }
 
 /* Button container and styling */
-.monster-card-buttons {
+.amonster-card-buttons {
   margin-top: 0.5rem;
   display: flex;
   gap: 0.5rem;
   justify-content: center;
 }
 
-.monster-card-button {
+.amonster-card-button {
   padding: 0.25rem 0.5rem;
   font-size: 0.7rem;
   cursor: pointer;

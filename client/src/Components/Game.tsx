@@ -20,6 +20,8 @@ export interface GameState {
   boardItems?: api.ItemInfo[];
   deckSize?: number;
   shopSize?: number;
+  selectedItems?: boolean[];
+  selectedMon?: number;
 }
 
 const GameStateContext = createContext<GameState | undefined>(undefined);
@@ -155,7 +157,8 @@ function Game() {
     deckSize: number,
     shopSize: number,
     monsters: api.MonsterInfo[],
-    items: api.ItemInfo[]
+    selected_monster: number | null,
+    items: api.ItemInfo[],
   ) => {
     setGameState((prevState) => {
       if (!prevState) return undefined;
@@ -165,9 +168,10 @@ function Game() {
         shopSize: shopSize,
         monsters: monsters,
         boardItems: items,
+        selectedMon: selected_monster != null ? selected_monster : undefined,
       };
     });
-    console.log("recieved board update from server", monsters);
+    console.log("recieved board update from server", monsters, selected_monster);
   };
 
   const handleStartGame = (first_player: string) => {
@@ -184,13 +188,14 @@ function Game() {
     navigate(`/play/${gameId}/board`);
   };
 
-  const handleHandUpdate = (items: api.ItemInfo[]) => {
+  const handleHandUpdate = (items: api.ItemInfo[], selectedItems: boolean[]) => {
     console.log("Items update: ", items);
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
         ...prevState,
         items: items,
+        selectedItems: selectedItems,
       };
     });
   };

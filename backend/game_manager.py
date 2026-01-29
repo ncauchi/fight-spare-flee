@@ -10,6 +10,7 @@ import threading
 import requests
 from test import get_local_ip
 from api_wrapper import *
+import api_wrapper
 import warnings
 from app_logging import AppLogger
 
@@ -34,6 +35,69 @@ games : dict[str, GameState] = {}
 game_locks : dict[str, threading.Lock] = {}
 games_lock = threading.Lock()
 connections_lock = threading.Lock()
+
+class GameSnapshot:
+    """Captures a snapshot of game state for differential comparison"""
+    def __init__(self, game: GameState):
+        self.players = {name: player.get_status_public() for name, player in game.players.items()}
+        self.turn = game.get_active_player()
+        self.turn_phase = game.turn_phase
+        self.board = game.get_status_board()
+        self.player_hands = {name: player.get_status_hand() for name, player in game.players.items()}
+        self.player_selected_items = {name: game.get_selected_fight_items(name).copy() for name in game.players.keys()}
+
+def differential_update(game_id: str, before: GameSnapshot, after: GameSnapshot):
+    """
+    Compares before and after snapshots and emits only the necessary updates
+    """
+    changed_players = False
+
+    for player_name in after.players:
+        if not changed_players and player_name not in before.players or before.players[player_name] != after.players[player_name]:
+            changed_players = True
+
+    for player_name in before.players:
+        if not changed_players and player_name not in after.players:
+            changed_players = True
+
+    if changed_players:
+        update_game_players(game_id)
+    if before.turn != after.turn or before.turn_phase != after.turn_phase:
+        update_game_turn(game_id)
+    if before.board != after.board:
+        update_game_board(game_id)
+    for player_name in after.player_hands:
+        if (player_name not in before.player_hands) or (before.player_hands[player_name] != after.player_hands[player_name]) or (before.player_selected_items[player_name] != after.player_selected_items[player_name]):
+            update_game_player_hand(game_id, player_name)
+
+def with_differential_update(handler_func):
+    """
+    Decorator that wraps action handlers to perform differential updates
+    Usage: @with_differential_update on any handler function
+
+    Apply BEFORE @fsf_api.event_handler decorator:
+        @with_differential_update
+        @fsf_api.event_handler(SomeRequest)
+        def HANDLER(data, sid):
+            ...
+    """
+    def wrapper(data, sid):
+        _, game_id = player_from_sid(sid)
+
+        with game_locks[game_id]:
+            before = GameSnapshot(games[game_id])
+
+        result = handler_func(data, sid)
+
+        with game_locks[game_id]:
+            after = GameSnapshot(games[game_id])
+
+        differential_update(game_id, before, after)
+        return result
+
+    # Preserve function name for event_handler decorator
+    wrapper.__name__ = handler_func.__name__
+    return wrapper
 
 @socketio.on('connect')
 def test_connect(auth):
@@ -150,7 +214,9 @@ def CHAT(data: ChatRequest, sid):
     logger.info(f'player "{player_name}" sent a message "{data.text}"')
 
      
+
 @fsf_api.event_handler(ActionRequest)
+@with_differential_update
 def ACTION(data: ActionRequest, sid):
     player_name, game_id = player_from_sid(sid)
     logger.info(f'recieved action request from game {player_name}')
@@ -158,23 +224,29 @@ def ACTION(data: ActionRequest, sid):
         game = games[game_id]
         game.player_action(player=player_name, action=data.choice)
 
+
 @fsf_api.event_handler(CombatRequest)
+@with_differential_update
 def COMBAT(data: CombatRequest, sid):
     player_name, game_id = player_from_sid(sid)
-    logger.info(f'recieved combat action from game {player_name}')
+    logger.info(f'recieved combat action from game {player_name}: {data}')
     with game_locks[game_id]:
         game = games[game_id]
         game.player_select_monster(player=player_name, choice=data.target, combat_action=data.combat)
 
+
 @fsf_api.event_handler(ItemChoiceRequest)
+@with_differential_update
 def ITEM_CHOICE(data: ItemChoiceRequest, sid):
     player_name, game_id = player_from_sid(sid)
-    logger.info(f'recieved item selection from game {player_name}')
+    logger.info(f'recieved item selection from game {player_name}: {data}')
     with game_locks[game_id]:
         game = games[game_id]
         game.player_select_item(player=player_name, choice=data.item)
 
+
 @fsf_api.event_handler(PlayerChoiceRequest)
+@with_differential_update
 def PLAYER_CHOICE(data: PlayerChoiceRequest, sid):
     player_name, game_id = player_from_sid(sid)
     logger.info(f'recieved player selection from game {player_name}')
@@ -225,18 +297,16 @@ def update_game_players(game_id: str):
         player_snapshot = game.get_status_players()
     
     fsf_api.emit_players_event(game_id, players=player_snapshot)
-    logger.info(f'updating players in game {game_name}')
+    logger.info(f'updating players in game {game_name}, {player_snapshot}')
 
 def update_game_board(game_id: str):
     with game_locks[game_id]:
         game = games[game_id]
         game_name = game._name
-        board_snapshot = game.get_status_fsf()
-        deck_size = len(game.deck)
-        shop_size = len(game.shop)
+        board_snapshot = game.get_status_board()
     
-    fsf_api.emit_board_event(game_id, deck_size=deck_size, shop_size=shop_size, monsters=board_snapshot)
-    logger.info(f'updating board in game {game_name}')
+    fsf_api.emit_board_event(game_id, **board_snapshot)
+    logger.info(f'updating board in game {game_name}, {board_snapshot}')
 
 def update_game_player_hand(game_id: str, player: str):
     with game_locks[game_id]:
@@ -244,11 +314,21 @@ def update_game_player_hand(game_id: str, player: str):
         game_name = game._name
         player_sid = game.players[player].sid
         hand_snapshot = game.players[player].get_status_hand()
+        selected_items = game.get_selected_fight_items(player)
+
     
-    fsf_api.emit_hand_event(player_sid, hand_snapshot)
-    logger.info(f'updating {player}\'s hand in game {game_name}')
+    fsf_api.emit_hand_event(player_sid, hand_snapshot, selected_items)
+    logger.info(f'updating {player}\'s hand in game {game_name}, {hand_snapshot}, {selected_items}')
 
-
+def update_game_turn(game_id: str):
+    with game_locks[game_id]:
+        game = games[game_id]
+        game_name = game._name
+        active = game.get_active_player()
+        phase = game.turn_phase
+    
+    fsf_api.emit_turn_event(game_id, active=active, phase=phase)
+    logger.info(f'updating turn info in game {game_name}, {active} {phase}')
 
 @app.route("/internal/<game_id>", methods = ["POST"])
 def create_game(game_id):
@@ -259,21 +339,6 @@ def create_game(game_id):
         return jsonify({"error": "no data"}), 400
 
     new_game = GameState(game_id, data["name"], data["owner"], data["max_players"])
-    hand_change_events = [EventType.SHOP, EventType.FIGHT]
-    board_change_events = [EventType.COMBAT, EventType.FLEE, EventType.FLIP, EventType.SPARE]
-    player_change_events = [EventType.SHOP, EventType.FIGHT, EventType.FLEE, EventType.SPARE, EventType.TURN, EventType.COINS]
-    update_hand_func = lambda e : update_game_player_hand(game_id, e.player)
-    update_board_func = lambda e : update_game_board(game_id)
-    update_players_func = lambda e : update_game_players(game_id)
-    
-    for e in hand_change_events:
-        new_game._event_bus.subscribe(event_type=e, callback=update_hand_func)
-    for e in board_change_events:
-        print(f'binding {update_board_func.__name__}, {update_board_func} to {e}')
-        new_game._event_bus.subscribe(event_type=e, callback=update_board_func)
-    for e in player_change_events:
-        print(f'binding {update_players_func.__name__}, {update_players_func} to {e}')
-        new_game._event_bus.subscribe(event_type=e, callback=update_players_func)
 
     with games_lock:
         games[game_id] = new_game

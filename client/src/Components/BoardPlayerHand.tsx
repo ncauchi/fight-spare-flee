@@ -16,6 +16,7 @@ function BoardPlayerHand({ onItemClick }: Props) {
   });
   if (!player) return <Spinner></Spinner>;
   const cards = gameState?.items;
+  const selectedItems = gameState?.selectedItems;
 
   return (
     <div className="item-card-box">
@@ -24,7 +25,14 @@ function BoardPlayerHand({ onItemClick }: Props) {
       </p>
       <p>Phase: {gameState?.turn_phase}</p>
       <Stack direction="horizontal" gap={1}>
-        {cards && cards.map((info, i) => <ItemCard data={info} onClick={() => onItemClick(i)} />)}
+        {cards &&
+          cards.map((info, i) => (
+            <ItemCard
+              data={info}
+              onClick={() => onItemClick(i)}
+              isSelected={selectedItems ? selectedItems[i] : false}
+            />
+          ))}
       </Stack>
     </div>
   );

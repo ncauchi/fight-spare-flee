@@ -8,13 +8,21 @@ import { Socket } from "socket.io-client";
 // Enums
 export type PlayerActionChoice = "COINS" | "SHOP" | "COMBAT" | "END" | "CANCEL";
 
-export type PlayerCombatChoice =  "FIGHT" | "SPARE" | "FLEE" | "SELECT";
+export type PlayerCombatChoice = "FIGHT" | "SPARE" | "FLEE" | "SELECT";
 
 export type GameStatus = "LOBBY" | "GAME" | "END";
 
-export type TurnPhase = "CHOOSING_ACTION" | "IN_COMBAT" | "IN_LEFTOVER_COMBAT" | "SHOPPING" | "FLED" | "PVP" | "TURN_ENDED";
+export type TurnPhase =
+  | "CHOOSING_ACTION"
+  | "COMBAT_SELECT"
+  | "COMBAT_ACTION"
+  | "COMBAT_FIGHT"
+  | "SHOPPING"
+  | "FLED"
+  | "PVP"
+  | "TURN_ENDED";
 
-export type ItemTarget = "MONSTER" | "PLAYER" | "ITEM" | "NONE"
+export type ItemTarget = "MONSTER" | "PLAYER" | "ITEM" | "NONE";
 
 // Shared Models
 export interface ItemInfo {
@@ -63,7 +71,13 @@ export interface BoardResponse {
   deck_size: number;
   shop_size: number;
   monsters: MonsterInfo[];
+  selected_monster: number | null;
   items: ItemInfo[];
+}
+
+export interface HandResponse {
+  items: ItemInfo[];
+  selected_items: boolean[];
 }
 
 export interface TurnResponse {
@@ -101,7 +115,7 @@ export interface ItemChoiceRequest {
 }
 
 export interface PlayerChoiceRequest {
-  player: string
+  player: string;
 }
 
 // ==================== API WRAPPER CLASS ====================
@@ -116,48 +130,48 @@ export class GameAPI {
   requestJoinGame(game_id: string, player_name: string) {
     const data: JoinRequest = { game_id: game_id, player_name: player_name };
     this.socket.emit("JOIN", data);
-    console.log("sending join request to server")
+    console.log(`sending join request to server: ${player_name}, ${game_id}`);
   }
 
   requestSetLobbyReady(ready: boolean) {
     const req: LobbyReadyRequest = { ready: ready };
     this.socket.emit("LOBBY_READY", req);
-    console.log("sending lobby ready request to server")
+    console.log(`sending lobby ready request to server ${ready}`);
   }
 
   requestStartGame() {
     this.socket.emit("START_GAME", {});
-    console.log("sending start game request to server")
+    console.log(`sending start game request to server`);
   }
 
   requestSendChat(text: string) {
     const req: ChatRequest = { text: text };
     this.socket.emit("CHAT", req);
-    console.log("sending chat request to server")
+    console.log(`sending chat request to server ${text}`);
   }
 
   requestSendAction(choice: PlayerActionChoice) {
     const req: ActionRequest = { choice: choice };
     this.socket.emit("ACTION", req);
-    console.log("sending action request to server")
+    console.log(`sending action request to server ${choice}`);
   }
 
   requestSendCombat(choice: PlayerCombatChoice, target: number) {
     const req: CombatRequest = { combat: choice, target: target };
     this.socket.emit("COMBAT", req);
-    console.log("sending combat request to server")
+    console.log(`sending combat request to server: ${choice}, ${target}`);
   }
 
   requestSendItemChoice(item: number) {
     const req: ItemChoiceRequest = { item: item };
     this.socket.emit("ITEM_CHOICE", req);
-    console.log("sending item select request to server")
+    console.log(`sending item select request to server ${item}`);
   }
 
   requestSendPlayerChoice(target: string) {
     const req: PlayerChoiceRequest = { player: target };
     this.socket.emit("PLAYER_CHOICE", req);
-    console.log("sending player select request to server")
+    console.log(`sending player select request to server ${target}`);
   }
 
   // Server → Client event listener
@@ -186,13 +200,24 @@ export class GameAPI {
     cleanup?.push(() => this.socket.off("CHANGE_TURN", handler));
   }
 
-  onBoard(handler: (deck_size: number, shop_size: number, monsters: MonsterInfo[], items: ItemInfo[],) => void, cleanup?: any[]) {
-    this.socket.on("BOARD", (data: BoardResponse)=> handler(data.deck_size, data.shop_size, data.monsters, data.items));
+  onBoard(
+    handler: (
+      deck_size: number,
+      shop_size: number,
+      monsters: MonsterInfo[],
+      selected_monster: number | null,
+      items: ItemInfo[],
+    ) => void,
+    cleanup?: any[],
+  ) {
+    this.socket.on("BOARD", (data: BoardResponse) =>
+      handler(data.deck_size, data.shop_size, data.monsters, data.selected_monster, data.items),
+    );
     cleanup?.push(() => this.socket.off("BOARD", handler));
   }
 
-  onHandUpdate(handler: (items: ItemInfo[]) => void, cleanup?: any[]) {
-    this.socket.on("ITEMS", handler);
+  onHandUpdate(handler: (items: ItemInfo[], selcted_items: boolean[]) => void, cleanup?: any[]) {
+    this.socket.on("ITEMS", (data: HandResponse) => handler(data.items, data.selected_items));
     cleanup?.push(() => this.socket.off("ITEMS", handler));
   }
 }

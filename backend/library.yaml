@@ -13,3 +13,6 @@ monsters:
     fight_coins: 3
     flee_coins: 2
     spare_coins: 2
+characters:
+  dev_character:
+    img: dancing-banana.gif

@@ -26,12 +26,14 @@ class GameStatus(Enum):
 
 class TurnPhase(Enum):
     CHOOSING_ACTION = "CHOOSING_ACTION"
-    IN_COMBAT = "IN_COMBAT"
-    IN_LEFTOVER_COMBAT = "IN_LEFTOVER_COMBAT"
+    COMBAT_SELECT = "COMBAT_SELECT"
+    COMBAT_ACTION = "COMBAT_ACTION"
+    COMBAT_FIGHT = "COMBAT_FIGHT"
     SHOPPING = "SHOPPING"
     FLED = "FLED"
     PVP = "PVP"
     TURN_ENDED = "TURN_ENDED"
+
 
 class ItemTarget(Enum):
     MONSTER = "MONSTER"
@@ -100,7 +102,7 @@ class CombatRequest(BaseModel):
     target: Optional[int] = -1
 
 class ItemChoiceRequest(BaseModel):
-    item: Optional[int] = -1
+    item: int
 
 class PlayerChoiceRequest(BaseModel):
     player: str
@@ -181,11 +183,12 @@ class Fsf_api():
         """Emit CHANGE_TURN event to signal active player change."""
         self.server.emit("CHANGE_TURN", {"active": active, "phase": phase.name}, to=to)
 
-    def emit_board_event(self, to: str, deck_size: int, shop_size: int, monsters : List[MonsterInfo] = [], items : list[ItemInfo] = []):
+    def emit_board_event(self, to: str, deck_size: int, shop_size: int, monsters : List[MonsterInfo] = [], selected_monster: int = None, items : list[ItemInfo] = []):
         item_i = [item.model_dump(mode='json') for item in items] if items else []
         mon_i = [mon.model_dump(mode='json') for mon in monsters] if monsters else []
-        self.server.emit("BOARD", {"deck_size": deck_size, "shop_size": shop_size, "monsters": mon_i, "items": item_i}, to=to)
+        self.server.emit("BOARD", {"deck_size": deck_size, "shop_size": shop_size, "monsters": mon_i, "selected_monster": selected_monster, "items": item_i}, to=to)
 
-    def emit_hand_event(self, to: str, items: List[ItemInfo]):
+    def emit_hand_event(self, to: str, items: List[ItemInfo], selected_items: List[bool] = None):
         item_i = [item.model_dump(mode='json') for item in items] if items else []
-        self.server.emit("ITEMS", item_i, to=to)
+        
+        self.server.emit("ITEMS", {"items": item_i, "selected_items": selected_items}, to=to)

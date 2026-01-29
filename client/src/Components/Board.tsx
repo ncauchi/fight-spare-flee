@@ -17,29 +17,31 @@ function Board() {
     return <Spinner></Spinner>;
   }
 
-  const [flipped, setFlipped] = useState(false);
-  const [selectedMon, setSelectedMon] = useState(-1);
   const playerName = usePlayerName();
   const opponents = gameState?.players.filter((p) => {
     return p.name != playerName;
   });
   const myTurn = gameState?.active_player === playerName;
+  const isSelectedMonster =
+    myTurn &&
+    gameState.selectedMon != undefined &&
+    gameState.monsters &&
+    gameState.monsters.some((mon) => {
+      return mon.name != undefined;
+    });
+  const selectedMon = gameState.selectedMon != undefined ? gameState.selectedMon : -1;
 
-  const handleFlip = () => {
-    setFlipped(!flipped);
-  };
-
-  const handleMonsterSelect = (s: PlayerCombatChoice, i: number) => {
-    setSelectedMon(i);
-    api.requestSendCombat(s, i);
+  const isLeftoverCombat = gameState.monsters?.every((mon) => {
+    return mon.name != undefined;
+  });
+  const handleMonsterClick = (s: PlayerCombatChoice, i: number) => {
+    if (myTurn) {
+      api.requestSendCombat(s, i);
+    }
   };
 
   return (
     <div className="game-board">
-      <div className={`card ${flipped ? "flipped" : ""}`}>
-        <div className="card-back" />
-        <div className="card-front" />
-      </div>
       <div className="game-chat">
         <ChatWindow gameName={gameState?.game_name} gameOwner={gameState.game_owner} messages={gameState.messages} />
       </div>
@@ -78,10 +80,29 @@ function Board() {
               key={i}
               isActivePlayer={myTurn}
               data={mon}
-              onClick={(s) => handleMonsterSelect(s, i)}
+              onClick={(s) => handleMonsterClick(s, i)}
               isSelected={selectedMon == i}
             />
           ))}
+        </Stack>
+        <Stack direction="horizontal" gap={2}>
+          {isSelectedMonster && gameState.turn_phase == "COMBAT_ACTION" && (
+            <Button onClick={() => api.requestSendCombat("FIGHT", selectedMon)}>Fight</Button>
+          )}
+          {isSelectedMonster && gameState.turn_phase == "COMBAT_ACTION" && (
+            <Button onClick={() => api.requestSendCombat("SPARE", selectedMon)}>Spare</Button>
+          )}
+          {isSelectedMonster && gameState.turn_phase == "COMBAT_ACTION" && !isLeftoverCombat && (
+            <Button onClick={() => api.requestSendCombat("FLEE", selectedMon)}>Flee</Button>
+          )}
+          {isSelectedMonster && gameState.turn_phase == "COMBAT_ACTION" && isLeftoverCombat && (
+            <Button onClick={() => api.requestSendCombat("FLEE", selectedMon)}>Pass</Button>
+          )}
+          {isSelectedMonster && gameState.turn_phase == "COMBAT_FIGHT" && (
+            <Button variant="danger" onClick={() => api.requestSendCombat("FIGHT", selectedMon)}>
+              Use Items
+            </Button>
+          )}
         </Stack>
       </Stack>
     </div>

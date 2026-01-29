@@ -5,9 +5,10 @@ import { Stack } from "react-bootstrap";
 interface Props {
   data: ItemInfo;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
+  isSelected: boolean;
 }
 
-function ItemCard({ data, onClick }: Props) {
+function ItemCard({ data, onClick, isSelected }: Props) {
   const handleHover = (hovering: boolean) => {
     setHovering(hovering);
   };
@@ -15,7 +16,7 @@ function ItemCard({ data, onClick }: Props) {
   const [hovering, setHovering] = useState(false);
   return (
     <div
-      className={`m-3 item-card ${hovering ? "hovering" : ""}`}
+      className={`m-3 item-card ${hovering ? "hovering" : ""} ${isSelected ? "selected" : ""}`}
       onMouseEnter={() => {
         handleHover(true);
       }}
