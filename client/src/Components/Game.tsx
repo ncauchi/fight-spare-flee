@@ -4,6 +4,12 @@ import { useState, createContext, useContext, useRef, useEffect, type RefObject 
 import { io } from "socket.io-client";
 import * as api from "../api_wrapper.ts";
 import configData from ".././config.json";
+import { useCallback } from "react";
+import { type AnimationInfo, useBoardAnimations } from "./boardAnimations.ts";
+
+export interface GameEvents {
+  newCards: number[];
+}
 
 export interface GameState {
   game_name: string;
@@ -26,6 +32,14 @@ export interface GameState {
 
 const GameStateContext = createContext<GameState | undefined>(undefined);
 const APIContext = createContext<RefObject<api.GameAPI | undefined> | undefined>(undefined);
+const GameEventsContext = createContext<
+  | {
+      anims: AnimationInfo[];
+      register: (id: string, el: HTMLDivElement | null, type?: "item" | "monster" | null) => void;
+      removeAnim: (id: number) => void;
+    }
+  | undefined
+>(undefined);
 
 export const useGameState = () => {
   const context = useContext(GameStateContext);
@@ -40,12 +54,21 @@ export const useAPI = () => {
   return context.current;
 };
 
+export const useAnimations = () => {
+  const context = useContext(GameEventsContext);
+  if (!context) {
+    throw new Error("useGameEvents error");
+  }
+  return context;
+};
+
 function Game() {
   const { gameId } = useParams();
   const playerName = usePlayerName();
   const [gameState, setGameState] = useState<GameState | undefined>(undefined);
   const navigate = useNavigate();
   const apiRef = useRef<api.GameAPI>(undefined);
+  const { animations, onAnimationEvent, removeAnimation, registerRef } = useBoardAnimations();
 
   useEffect(() => {
     const socket = io(configData.GAMES_URL, { transports: ["websocket", "polling"] });
@@ -85,6 +108,8 @@ function Game() {
     apiRef.current.onBoard(handleBoardUpdate, cleanup);
 
     apiRef.current.onHandUpdate(handleHandUpdate, cleanup);
+
+    apiRef.current.onAnimationEvent(onAnimationEvent, cleanup);
 
     return () => {
       // Remove all event listeners
@@ -190,6 +215,7 @@ function Game() {
 
   const handleHandUpdate = (items: api.ItemInfo[], selectedItems: boolean[]) => {
     console.log("Items update: ", items);
+
     setGameState((prevState) => {
       if (!prevState) return undefined;
       return {
@@ -203,7 +229,9 @@ function Game() {
   return (
     <APIContext.Provider value={apiRef}>
       <GameStateContext.Provider value={gameState}>
-        <Outlet />
+        <GameEventsContext.Provider value={{ anims: animations, register: registerRef, removeAnim: removeAnimation }}>
+          <Outlet />
+        </GameEventsContext.Provider>
       </GameStateContext.Provider>
     </APIContext.Provider>
   );

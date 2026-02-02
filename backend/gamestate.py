@@ -9,18 +9,24 @@ import yaml
 from item_effects import EFFECT_REGISTRY, ITEM_REGISTRY, MONSTER_REGISTRY
 from app_logging import AppLogger
 from game_events import *
+import uuid
 
 
 class Item:
+    id: int
     name: str
     text: str
     target_type: api_wrapper.ItemTarget = api_wrapper.ItemTarget.NONE
     effect: Callable[[Any], Any] = None
     params: dict[str, Any] = None
 
+    next_id = 0
+
 
     def __init__(self, name: str = "", data: dict = None):
         self.name = name
+        self.id = Item.next_id
+        Item.next_id += 1
         if not data:
             self.text = ""
         else:
@@ -38,6 +44,18 @@ class Item:
             raise KeyError(f"Item {id} does not exit")
         cur_item: dict = ITEM_REGISTRY[id]
         return Item(name=id, data=cur_item)
+    
+    @staticmethod
+    def info_from_id(id: str) -> api_wrapper.ItemInfo:
+        if id not in ITEM_REGISTRY.keys():
+            raise KeyError(f"Item {id} does not exit")
+        data: dict = ITEM_REGISTRY[id]
+        if "effect" in data:
+            target, _ = EFFECT_REGISTRY[data["effect"]["id"]]
+        else:
+            target = api_wrapper.ItemTarget.NONE
+            
+        return api_wrapper.ItemInfo(id=-1, name=id, text=data["text"], target_type=target)
 
 
     def activate(self, target: Player | Monster | Item | None = None):
@@ -57,7 +75,7 @@ class Item:
             self.effect(target, **self.params)
 
     def get_api_status(self):
-        return api_wrapper.ItemInfo(name=self.name, text=self.text, target_type=self.target_type)
+        return api_wrapper.ItemInfo(id= self.id, name=self.name, text=self.text, target_type=self.target_type)
 
 
 class Monster:
@@ -70,6 +88,9 @@ class Monster:
     spare_coins: int
     fight_coins: int
     max_health: int
+    id: int
+
+    next_id = 0
 
     def __init__(self, name: str = "", data: dict = None):
         if not data:
@@ -86,6 +107,8 @@ class Monster:
         self.spare_coins = data["spare_coins"]
         self.fight_coins = data["fight_coins"]
         self.max_health = data["health"]
+        self.id = Monster.next_id
+        Monster.next_id += 1
 
     @staticmethod
     def construct_from_id(id: str) -> Monster:
@@ -97,6 +120,7 @@ class Monster:
     def get_api_status(self):
         if self.visible:
             return api_wrapper.MonsterInfo(
+                id = self.id,
                 name = self.name,
                 stars=self.stars,
                 max_health=self.max_health,
@@ -108,6 +132,7 @@ class Monster:
             )
         else:
             return api_wrapper.MonsterInfo(
+                id = self.id,
                 stars=self.stars
             )
 
@@ -156,26 +181,6 @@ class Player:
         )
 
 
-class CombatEvent(Event):
-    monsters: list[Monster]
-    def __init__(self, monsters: list[Monster]):
-        super().__init__(type=EventType.COMBAT)
-        self.monsters = monsters
-
-class ShopEvent(Event):
-    items: list[Item]
-    def __init__(self, player: str, item: Item = None, items: list[Item] = []):
-        super().__init__(type=EventType.SHOP, player=player)
-        if item:
-            self.items = [item]
-        else:
-            self.items = items
-
-class CoinsEvent(Event):
-    coins: int
-    def __init__(self, coins: int):
-        super().__init__(type=EventType.COINS)
-        self.coins = coins
 
 class GameState:
     '''
@@ -282,15 +287,19 @@ class GameState:
             self.original_player = player.name
             self.order = order
             self.player = self.order[0]
+            self.selected_items = [False]*len(player.items)
 
-        def kill_monster(self, monster_idx: int):
-            self.monsters.pop(monster_idx)
+        def kill_monster(self):
+            self.monsters.pop(self.selected_idx)
+            self.selected_idx = None
             self.state = "selecting"
             self.player = self.order.pop(0)
+            self.selected_items = [False]*len(self.player.items)
 
         def spare_monster(self) -> tuple[int, bool]:
             self.state = "selecting"
             self.player = self.order.pop(0)
+            self.selected_items = [False]*len(self.player.items)
             return super().spare_monster()
             
 
@@ -298,6 +307,7 @@ class GameState:
             self.selected_idx = None
             self.state = "selecting"
             self.player = self.order.pop(0)
+            self.selected_items = [False]*len(self.player.items)
             if len(self.order) == 0:
                 return api_wrapper.TurnPhase.TURN_ENDED
             else:
@@ -395,9 +405,9 @@ class GameState:
             return
         player_obj = self.players[player]
         if action == api_wrapper.PlayerActionChoice.COINS:
-            coins_event = CoinsEvent(2)
+            coins_event = CoinsEvent(game_id=self._id, player=player, amount=2)
             self._event_bus.emit(event=coins_event)
-            player_obj.coins += coins_event.coins
+            player_obj.coins += coins_event.amount
             self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
             self._logger.info(f'player {player} took coins')
         elif action == api_wrapper.PlayerActionChoice.SHOP:
@@ -410,10 +420,10 @@ class GameState:
                 self.__init_deck()
             monster_results = [self.deck[i] for i in range(3)]
             del self.deck[:3]
-            combat_event = CombatEvent(monsters=monster_results)
+            combat_event = CombatEvent(game_id=self._id, monster_ids=[mon.name for mon in monster_results], info=[mon.get_api_status() for mon in monster_results])
             self._event_bus.emit(combat_event)
-            self._combat_substate = self.NCombatSubstate(monsters=combat_event.monsters, player=player_obj)
-            self._logger.info(f"combat started against {len(combat_event.monsters)} monsters")
+            self._combat_substate = self.NCombatSubstate(monsters=monster_results, player=player_obj)
+            self._logger.info(f"combat started against {len(monster_results)} monsters")
             self._change_turn_phase(api_wrapper.TurnPhase.COMBAT_SELECT)
         else:
             self._logger.warning(f"invalid action {action}")
@@ -495,6 +505,8 @@ class GameState:
             return
         
         if item != None:
+            if item >= len(self._combat_substate.selected_items):
+                self._logger.error(f'invalid item selection, combat state {self._combat_substate.selected_items}, {self._combat_substate.player.name}, {self._combat_substate.__class__.__name__}')
             self._combat_substate.selected_items[item] = not self._combat_substate.selected_items[item]
             self._logger.info(f'player {player} {"selected" if self._combat_substate.selected_items[item] else "unselected"} item {item}')
             return
@@ -521,7 +533,6 @@ class GameState:
             player_obj.health -= 1
 
         self._end_combat()
-        self._event_bus.emit(Event(type=EventType.FIGHT))
 
 
 
@@ -559,15 +570,16 @@ class GameState:
             self._logger.info(f'player {player.name} tried to buy an item but is holding too many')
             return    
         item = self.shop.pop(0)        
-        shop_event = ShopEvent(player=player.name, item=item)
+        shop_event = ShopEvent(game_id=self._id, item_id=item.name, item_uid=item.id, player_name=player.name)
         player.coins -= 2
         self._event_bus.emit(shop_event)
         if player.coins < 2:
             self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
         else: 
             self._change_turn_phase(api_wrapper.TurnPhase.SHOPPING)
-        player.items += shop_event.items
-        self._logger.info(f'player {player.name} bought item(s) {[i.name for i in shop_event.items]}')
+        #TODO Change
+        player.items += [item]
+        self._logger.info(f'player {player.name} bought item(s) {item.name}')
 
 
     def _end_combat(self):
@@ -707,7 +719,7 @@ class GameState:
     def _change_turn_phase(self, new_phase: api_wrapper.TurnPhase):
         if not self.turn_phase or self.turn_phase != new_phase:
             self.turn_phase = new_phase
-            self._event_bus.emit(Event(type=EventType.TURN))
+            #self._event_bus.emit(Event(type=EventType.TURN))
         
 
     def get_active_player(self) -> str | None:

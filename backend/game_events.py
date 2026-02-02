@@ -2,28 +2,35 @@ import eventlet
 eventlet.monkey_patch()
 
 from enum import Enum, auto
-from typing import Literal, get_args, Callable, NoReturn
+from typing import Literal, get_args, Callable, NoReturn, Optional, Union
+from api_wrapper import Animation
+import api_wrapper
+from pydantic import BaseModel
 
-class EventType(Enum):
-    COMBAT = auto()
-    COINS = auto()
-    SHOP = auto()
-    FLIP = auto()
-    FIGHT = auto()
-    SPARE = auto()
-    FLEE = auto()
-    TURN = auto()
+#type EventTdype = Literal["combat", "coins", "shop", "flip", "fight", "spare", "flee", "turn", "animation"]
 
-
-class Event:
-
-    type: EventType
+class CoinsEvent(BaseModel):
+    type: Literal["coins"] = "coins"
+    game_id: str
     player: str
+    amount: int
 
-    def __init__(self, type: EventType, player: str = None):
-        self.type = type
-        self.player = player
-        
+class ShopEvent(BaseModel):
+    type: Literal["shop"] = "shop"
+    game_id: str
+    item_id: str
+    item_uid: int
+    player_name: str
+
+class CombatEvent(BaseModel):
+    type: Literal["combat"] = "combat"
+    game_id: str
+    monster_ids: list[str]
+    info: list[api_wrapper.MonsterInfo]
+
+type Event = Union[CoinsEvent, ShopEvent]
+
+type EventType = Literal["coins", "shop", "combat"]
 
 
 class EventBus:

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal, Union
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 from pydantic import BaseModel, field_validator
 
@@ -44,6 +44,7 @@ class ItemTarget(Enum):
 # Shared Object Models
 
 class ItemInfo(BaseModel):
+    id: int
     name: str
     text: str
     target_type: ItemTarget
@@ -53,6 +54,7 @@ class Message(BaseModel):
     text: str
 
 class MonsterInfo(BaseModel):
+    id: int
     name: Optional[str] = None
     stars: int
     max_health: Optional[int] = None
@@ -108,7 +110,43 @@ class PlayerChoiceRequest(BaseModel):
     player: str
 
 
-# Server Sent Events
+# Cosmetic Event Types
+
+type SimpleLocation = Literal["shop", "deck", "coins", "health", "player"]
+
+class HandLocation(BaseModel):
+    object: Literal["hand"] = "hand"
+    id: int
+
+class MonsterLocation(BaseModel):
+    object: Literal["monster"] = "monster"
+    id: int
+
+type Location = Union[SimpleLocation, HandLocation, MonsterLocation]
+
+
+class StarAnimContent(BaseModel):
+    type: Literal["star"] = "star"
+
+class CoinAnimContent(BaseModel):
+    type: Literal["coin"] = "coin"
+
+class ItemAnimContent(BaseModel):
+    type: Literal["item"] = "item"
+    item: ItemInfo
+    style: Literal["draw", "attack"]
+
+class MonsterAnimContent(BaseModel):
+    type: Literal["monster"] = "monster"
+    monster: MonsterInfo
+    style: Literal["appear", "kill", "spare", "flee", "return", "fail"]
+
+type AnimContent = Union[StarAnimContent, CoinAnimContent, ItemAnimContent, MonsterAnimContent]
+
+class Animation(BaseModel):
+    content: AnimContent
+    source: Location
+    destination:  Optional[Location]
 
 class Fsf_api():
     def __init__(self, server: SocketIO):
@@ -192,3 +230,9 @@ class Fsf_api():
         item_i = [item.model_dump(mode='json') for item in items] if items else []
         
         self.server.emit("ITEMS", {"items": item_i, "selected_items": selected_items}, to=to)
+
+
+    #Animation/Cosmetic events
+
+    def emit_anim_event(self, to: str, animation: Animation):     
+        self.server.emit("ANIMATION", animation.model_dump(mode='json'), to=to)

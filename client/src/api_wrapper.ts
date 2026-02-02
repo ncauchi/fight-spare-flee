@@ -26,6 +26,7 @@ export type ItemTarget = "MONSTER" | "PLAYER" | "ITEM" | "NONE";
 
 // Shared Models
 export interface ItemInfo {
+  id: number;
   name: string;
   text: string;
   target_type: ItemTarget;
@@ -37,6 +38,7 @@ export interface Message {
 }
 
 export interface MonsterInfo {
+  id: number;
   name?: string;
   stars: number;
   max_health?: number;
@@ -116,6 +118,50 @@ export interface ItemChoiceRequest {
 
 export interface PlayerChoiceRequest {
   player: string;
+}
+
+//Cosmetic Types
+
+export type SimpleLocation = "shop" | "deck" | "coins" | "health" | "player";
+
+export interface HandLocation {
+  object: "hand";
+  id: number;
+}
+
+export interface MonsterLocation {
+  object: "monster";
+  id: number;
+}
+
+export type Location = SimpleLocation | HandLocation | MonsterLocation;
+
+export interface StarAnimContent {
+  type: "star";
+}
+
+export interface CoinAnimContent {
+  type: "coin";
+}
+
+export interface ItemAnimContent {
+  type: "item";
+  item: ItemInfo;
+  style: "draw" | "attack";
+}
+
+export interface MonsterAnimContent {
+  type: "monster";
+  monster: MonsterInfo;
+  style: "appear" | "kill" | "spare" | "flee" | "return" | "fail";
+}
+
+export type AnimContent = StarAnimContent | CoinAnimContent | ItemAnimContent | MonsterAnimContent;
+
+export interface Animation {
+  content: AnimContent;
+  source: Location;
+  destination: Location | undefined;
 }
 
 // ==================== API WRAPPER CLASS ====================
@@ -219,5 +265,10 @@ export class GameAPI {
   onHandUpdate(handler: (items: ItemInfo[], selcted_items: boolean[]) => void, cleanup?: any[]) {
     this.socket.on("ITEMS", (data: HandResponse) => handler(data.items, data.selected_items));
     cleanup?.push(() => this.socket.off("ITEMS", handler));
+  }
+
+  onAnimationEvent(handler: (animationInfo: Animation) => void, cleanup?: any[]) {
+    this.socket.on("ANIMATION", (data: Animation) => handler(data));
+    cleanup?.push(() => this.socket.off("ANIMATION", handler));
   }
 }

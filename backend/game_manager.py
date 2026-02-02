@@ -4,8 +4,8 @@ eventlet.monkey_patch()
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
-from gamestate import GameState
-from game_events import EventType, EventBus, Event
+from gamestate import GameState, Item, Monster
+from game_events import *
 import threading
 import requests
 from test import get_local_ip
@@ -330,6 +330,35 @@ def update_game_turn(game_id: str):
     fsf_api.emit_turn_event(game_id, active=active, phase=phase)
     logger.info(f'updating turn info in game {game_name}, {active} {phase}')
 
+def on_coins_event(event: CoinsEvent):
+    logger.info("sending coins animation")
+    game_id = event.game_id
+    with game_locks[game_id]:
+        game = games[game_id]
+        player_sid = game.players[event.player].sid
+    anim = Animation(content=CoinAnimContent(), source="coins", destination="player")
+    fsf_api.emit_anim_event(to=player_sid, animation=anim)
+
+def on_shop_event(event: ShopEvent):
+    logger.info("sending item shop animation")
+    game_id = event.game_id
+    with game_locks[game_id]:
+        game = games[game_id]
+        destination_id = event.item_uid
+        player_sid = game.players[event.player_name].sid
+    item_info = Item.info_from_id(event.item_id)
+    anim = Animation(content=ItemAnimContent(item=item_info, style="draw"), source="shop", destination=HandLocation(id=destination_id))
+    fsf_api.emit_anim_event(to=player_sid, animation=anim)
+
+def on_combat_event(event: CombatEvent):
+    logger.info("sending combat start animation")
+    game_id = event.game_id
+    mon_infos = [m for m in event.info]
+    for mon_info in mon_infos:
+        anim = Animation(content=MonsterAnimContent(monster=mon_info, style="appear"), source="deck", destination=MonsterLocation(id=mon_info.id))
+        fsf_api.emit_anim_event(to=game_id, animation=anim)
+
+
 @app.route("/internal/<game_id>", methods = ["POST"])
 def create_game(game_id):
 
@@ -339,6 +368,10 @@ def create_game(game_id):
         return jsonify({"error": "no data"}), 400
 
     new_game = GameState(game_id, data["name"], data["owner"], data["max_players"])
+
+    new_game._event_bus.subscribe(event_type="shop", callback=on_shop_event)
+    new_game._event_bus.subscribe(event_type="coins", callback=on_coins_event)
+    new_game._event_bus.subscribe(event_type="combat", callback=on_combat_event)
 
     with games_lock:
         games[game_id] = new_game

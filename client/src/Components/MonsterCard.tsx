@@ -5,11 +5,13 @@ import { Button, Stack } from "react-bootstrap";
 interface Props {
   data: MonsterInfo;
   onClick?: (s: PlayerCombatChoice) => void;
-  isActivePlayer: boolean;
-  isSelected: boolean;
+  isActivePlayer?: boolean;
+  isSelected?: boolean;
+  isHidden?: boolean;
+  ref?: React.Ref<HTMLDivElement>;
 }
 
-function MonsterCard({ data, onClick, isActivePlayer, isSelected }: Props) {
+function MonsterCard({ data, onClick, isActivePlayer = false, isSelected = false, isHidden = false, ref }: Props) {
   const flipped = data.name != undefined;
 
   const handleCardClick = () => {
@@ -22,7 +24,8 @@ function MonsterCard({ data, onClick, isActivePlayer, isSelected }: Props) {
     <div
       className={`monster-card ${flipped ? "flipped" : ""} ${isSelected ? "selected" : ""}`}
       onClick={handleCardClick}
-      style={{ cursor: isActivePlayer ? "pointer" : "default" }}
+      style={{ cursor: isActivePlayer ? "pointer" : "default", opacity: isHidden ? 0 : 1 }}
+      ref={ref}
     >
       <div className="monster-card-back">
         <Stack direction="horizontal" gap={1}>

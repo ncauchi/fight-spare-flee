@@ -71,10 +71,11 @@
   width: 5rem;
   height: 7rem;
   transition: transform var(--hover-speed);
-  border-radius: 1rem;
+  border-radius: 0.5rem;
 
   &.hovering {
     transform: translate(0, -1rem) rotate3d(1, 0.5, 0, 10deg);
+    cursor: pointer;
   }
 
   &.selected {
@@ -125,77 +126,68 @@
   transform: translate(-50%, -50%);
 }
 
-/* MonsterCard flip animation styles */
-.amonster-card-container {
-  width: 5rem;
-  height: 7rem;
-  margin: 0.75rem;
-  perspective: 1000px;
-}
-
-.amonster-card-flipper {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transition: transform 0.5s;
-  transform-style: preserve-3d;
-}
-
-.amonster-card-flipper.flipped {
-  transform: rotateY(180deg);
-}
-
-.amonster-card-face {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 1rem;
-  backface-visibility: hidden;
-  background-color: rgb(123, 49, 49);
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  color: white;
-}
-
-.amonster-card-back {
-  /* No rotation needed - default position */
-}
-
-.amonster-card-front {
-  transform: rotateY(180deg);
-}
-
-/* Selection glow effect */
-.amonster-card-container.selected .monster-card-flipper {
-  box-shadow: 0 0 1.5rem 0 rgba(255, 255, 255, 1);
-  border-radius: 1rem;
-}
-
-/* Button container and styling */
-.amonster-card-buttons {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  justify-content: center;
-}
-
-.amonster-card-button {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.7rem;
-  cursor: pointer;
-}
-
 .deck-shop-coins-stack {
   position: absolute;
-  bottom: 50%;
+  bottom: 65%;
+  left: 50%;
+  transform: translateX(-50%);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deck-shop-coins-stack > div > div {
+}
+
+.board-monster-stack {
+  position: absolute;
+  bottom: 40%;
   left: 50%;
   transform: translateX(-50%);
 }
 
-.deck-shop-coins-stack > div > div {
-  cursor: pointer;
-  white-space: nowrap;
+.action-buttons-stack {
+  position: absolute;
+  bottom: 35%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.test-animation-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.animating-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.animating-card .item-card {
+  margin: 0 !important;
+}
+
+.animating-coins {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1000;
+  height: 1rem;
+  width: 1rem;
+  background-color: rgb(248, 232, 0);
+}
+
+.animating-stars {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 1000;
+  height: 2rem;
+  width: 2rem;
+  background-color: rgb(255, 255, 255);
 }

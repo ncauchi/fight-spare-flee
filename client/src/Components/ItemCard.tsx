@@ -6,9 +6,11 @@ interface Props {
   data: ItemInfo;
   onClick?: React.MouseEventHandler<HTMLDivElement>;
   isSelected: boolean;
+  isHidden?: boolean;
+  divRef?: React.Ref<HTMLDivElement>;
 }
 
-function ItemCard({ data, onClick, isSelected }: Props) {
+function ItemCard({ data, onClick, isSelected, isHidden, divRef }: Props) {
   const handleHover = (hovering: boolean) => {
     setHovering(hovering);
   };
@@ -24,7 +26,11 @@ function ItemCard({ data, onClick, isSelected }: Props) {
         handleHover(false);
       }}
       onClick={onClick}
-      style={{ "--hover-speed": `${hoverSpeed}s` } as React.CSSProperties}
+      style={{
+        "--hover-speed": `${hoverSpeed}s`,
+        opacity: isHidden ? 0 : 1,
+      } as React.CSSProperties}
+      ref={divRef}
     >
       <Stack dir="vertical">
         <h2>{data.name}</h2>
