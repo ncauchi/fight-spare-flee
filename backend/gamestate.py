@@ -147,6 +147,7 @@ class Player:
     items: list[Item]
     captured_stars: list[int]
     health: int
+    max_health: int
 
     def __init__(self, name: str, sid: str):
         self.name = name
@@ -156,6 +157,7 @@ class Player:
         self.items = []
         self.captured_stars = []
         self.health = 4
+        self.max_health = 4
 
     def use_item(self, item_pos: int, target: Player | Monster | Item | None = None):
         item = self.items.pop(item_pos)
@@ -166,6 +168,7 @@ class Player:
             self.items[i].activate(target=target)
         for i in sorted(items, reverse=True):
             del self.items[i]
+
 
     def get_status_hand(self):
         return [item.get_api_status() for item in self.items]
@@ -199,6 +202,7 @@ class GameState:
     _turn_order: list[str]
     _event_bus = EventBus
     players: dict[str, Player] #player_name -> Player
+    _left_players: dict[str, Player]
     status: api_wrapper.GameStatus
 
     #Turn
@@ -335,6 +339,7 @@ class GameState:
         self.status = api_wrapper.GameStatus.LOBBY
         self._logger = AppLogger(name=f"game_{name}")
         self._event_bus = EventBus()
+        self._left_players = {}
 
         self._allowed_items = allowed_items
         self._allowed_monsters = allowed_monsters
@@ -378,8 +383,27 @@ class GameState:
         
     
     def add_player(self, player_name, sid) -> None:
-        self.players[player_name] = Player(name=player_name, sid=sid)
-        self._logger.info(f'player {player_name} joined game')
+        if player_name in self._left_players:
+            self.players[player_name] = self._left_players[player_name]
+            del self._left_players[player_name]
+            self.players[player_name].sid = sid
+            self._logger.info(f'player {player_name} rejoined game')
+        else:
+            self.players[player_name] = Player(name=player_name, sid=sid)
+            self._logger.info(f'player {player_name} joined game')
+        if self.status == api_wrapper.GameStatus.GAME:
+            self._turn_order.append(player_name)
+
+    def remove_player(self, player_name) -> None:
+        if self.status == api_wrapper.GameStatus.GAME:
+            if player_name == self.get_active_player(): #End turn if they're active
+                self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
+                self._state_end_turn()
+            self._turn_order.remove(player_name)
+
+        self._left_players[player_name] = self.players[player_name]
+        del self.players[player_name]
+        self._logger.info(f'player {player_name} left game')
 
     def set_player_lobby_ready(self, player_name, ready) -> None:
         player = self.players[player_name]
@@ -412,6 +436,8 @@ class GameState:
             self._logger.info(f'player {player} took coins')
         elif action == api_wrapper.PlayerActionChoice.SHOP:
             self._buy_item(player=player_obj)
+        elif action == api_wrapper.PlayerActionChoice.HEALTH:
+            self._buy_health(player=player_obj)
         elif action == api_wrapper.PlayerActionChoice.COMBAT:
             if self._combat_substate:
                 self._logger.error("tried to start combat but combat substate already exists")
@@ -433,15 +459,20 @@ class GameState:
     def _state_shopping(self, player: str, action: api_wrapper.PlayerActionChoice = None):
         player_obj = self.players[player]
 
-        if action != api_wrapper.PlayerActionChoice.SHOP:
-            self._logger.warning(f'player {player_obj.name} tried to do something other than buy an item after buying an item')
+        if action == api_wrapper.PlayerActionChoice.SHOP:
+            if len(player_obj.items) > 4:
+                self._logger.info(f'player {player_obj.name} tried to buy an item but is holding too many')
+                self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
+                return            
+            self._buy_item(player=player_obj)
+        elif action == api_wrapper.PlayerActionChoice.HEALTH:
+            self._buy_health(player=player_obj)
+        else:
+            self._logger.warning(f'player {player_obj.name} tried to do something other than buy an item or health after buying an item')
             return
         
-        if len(player_obj.items) > 4:
-            self._logger.info(f'player {player_obj.name} tried to buy an item but is holding too many')
-            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
-            return            
-        self._buy_item(player=player_obj)
+        
+        
 
     def _state_combat_select(self, player: str, combat_action: api_wrapper.PlayerCombatChoice = None, monster_idx: int = None):
         if self._combat_substate == None:
@@ -485,6 +516,7 @@ class GameState:
                 self._logger.info(f'{player_obj.name} spared (rolled {roll})')
             else:
                 self._logger.info(f'{player_obj.name} failed to spare (rolled {roll})')
+                self._deal_damage(player=player_obj, amount=1)
             self._end_combat()
         elif combat_action == api_wrapper.PlayerCombatChoice.FLEE:
             new_phase = self._combat_substate.pass_monster()
@@ -530,7 +562,7 @@ class GameState:
             self._combat_substate.kill_monster()
         else:   
             self._logger.info(f'{player_obj.name} failed to kill {mon.name}')
-            player_obj.health -= 1
+            self._deal_damage(player=player_obj, amount=1)
 
         self._end_combat()
 
@@ -546,6 +578,8 @@ class GameState:
 
         if action == api_wrapper.PlayerActionChoice.SHOP:
             self._buy_item(player=player_obj)
+        elif action == api_wrapper.PlayerActionChoice.HEALTH:
+            self._buy_health(player=player_obj)
         elif combat_action == api_wrapper.PlayerCombatChoice.SELECT:
             self._change_turn_phase(api_wrapper.TurnPhase.COMBAT_SELECT)
             self._state_combat_select(player, api_wrapper.PlayerCombatChoice.SELECT, monster_idx)
@@ -580,6 +614,37 @@ class GameState:
         #TODO Change
         player.items += [item]
         self._logger.info(f'player {player.name} bought item(s) {item.name}')
+
+    def _buy_health(self, player: Player):
+        if player.coins < 2:
+            self._logger.info(f'player {player.name} tried to buy an item but does not have enough coins')
+            return
+        if player.health >= player.max_health:
+            self._logger.info(f'player {player.name} tried to health but is at max health')
+            return 
+        event = HealthEvent(game_id=self._id, player=player.name, health_amount=1)
+        player.coins -= 2
+        self._event_bus.emit(event)
+        if player.coins < 2:
+            self._change_turn_phase(api_wrapper.TurnPhase.TURN_ENDED)
+        else: 
+            self._change_turn_phase(api_wrapper.TurnPhase.SHOPPING)
+        player.health += event.health_amount
+        self._logger.info(f'player {player.name} bought health')
+        
+    def _deal_damage(self, player: Player, amount: int):
+        health_dmg = min(amount, player.health)
+        star_dmg = amount-health_dmg
+        star_idx = None
+        if star_dmg > 0 and player.captured_stars != []:
+            star_idx = 0
+            
+        event = PlayerDamageEvent(game_id=self._id, player=player.name, health_loss=health_dmg, star_index=star_idx)
+        self._event_bus.emit(event)
+        player.health -= event.health_loss
+        if event.star_index:
+            del player.captured_stars[event.star_index]
+        self._logger.info(f'player {player.name} lost {event.health_loss} health and star {event.star_index if event.star_index else "none" }')
 
 
     def _end_combat(self):

@@ -8,6 +8,7 @@ from pydantic import BaseModel, field_validator
 
 class PlayerActionChoice(Enum):
     COINS = "COINS"
+    HEALTH = "HEALTH"
     SHOP = "SHOP"
     COMBAT = "COMBAT"
     END = "END"

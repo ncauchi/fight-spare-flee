@@ -6,7 +6,7 @@ import { Socket } from "socket.io-client";
 // Server -> Client can have args, Client <- server needs to be wrapped in types
 
 // Enums
-export type PlayerActionChoice = "COINS" | "SHOP" | "COMBAT" | "END" | "CANCEL";
+export type PlayerActionChoice = "COINS" | "HEALTH" | "SHOP" | "COMBAT" | "END" | "CANCEL";
 
 export type PlayerCombatChoice = "FIGHT" | "SPARE" | "FLEE" | "SELECT";
 

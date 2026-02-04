@@ -272,7 +272,7 @@ def cleanup_disconnect(sid):
         with game_locks[game_id]:
             game = games[game_id]
             if player_name in game.players:
-                del game.players[player_name]
+                game.remove_player(player_name)
             players_snapshot = game.get_status_players()
             game_name = game._name
 

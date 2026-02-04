@@ -15,6 +15,12 @@ class CoinsEvent(BaseModel):
     player: str
     amount: int
 
+class HealthEvent(BaseModel):
+    type: Literal["health"] = "health"
+    game_id: str
+    player: str
+    health_amount: int
+
 class ShopEvent(BaseModel):
     type: Literal["shop"] = "shop"
     game_id: str
@@ -27,6 +33,13 @@ class CombatEvent(BaseModel):
     game_id: str
     monster_ids: list[str]
     info: list[api_wrapper.MonsterInfo]
+
+class PlayerDamageEvent(BaseModel):
+    type: Literal["player_dmg"] = "player_dmg"
+    game_id: str
+    player: str
+    health_loss: int
+    star_index: Optional[int]
 
 type Event = Union[CoinsEvent, ShopEvent]
 
