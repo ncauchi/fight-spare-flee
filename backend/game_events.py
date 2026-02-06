@@ -1,11 +1,9 @@
-import eventlet
-eventlet.monkey_patch()
-
 from enum import Enum, auto
 from typing import Literal, get_args, Callable, NoReturn, Optional, Union
 from api_wrapper import Animation
 import api_wrapper
 from pydantic import BaseModel
+import threading
 
 #type EventTdype = Literal["combat", "coins", "shop", "flip", "fight", "spare", "flee", "turn", "animation"]
 
@@ -70,5 +68,5 @@ class EventBus:
         if event.type not in self.listeners:
             return
         for callback in self.listeners[event.type]:
-            eventlet.spawn(callback, event)
+            threading.Thread(target=callback, args=(event)).start()
 

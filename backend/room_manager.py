@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from game_meta import GameMetadata
@@ -8,7 +9,7 @@ from app_logging import AppLogger
 
 app = Flask(__name__)
 CORS(app)
-games_api_url = "http://localhost:5001"
+games_api_url = os.environ.get("GAMES_API_URL", "http://localhost:5001")
 
 
 # In-memory storage for games

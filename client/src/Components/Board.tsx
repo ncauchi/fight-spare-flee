@@ -2,20 +2,15 @@ import "./Board.css";
 import ChatWindow from "./ChatWindow";
 import { useGameState, useAPI, useAnimations } from "./Game";
 import { Spinner, Button, Stack } from "react-bootstrap";
-import { useMemo, useState, useEffect, useCallback, useLayoutEffect, use } from "react";
+import { useMemo, useCallback } from "react";
 import BoardPlayerBox from "./BoardPlayerBox";
 import { usePlayerName } from "./NameContext";
 import BoardPlayerHand from "./BoardPlayerHand";
 import MonsterCard from "./MonsterCard";
-import type { ItemInfo, MonsterInfo, PlayerCombatChoice } from "../api_wrapper";
+import type { PlayerCombatChoice } from "../api_wrapper";
 import { AnimatePresence, motion } from "motion/react";
 import ItemCard from "./ItemCard";
-import type {
-  CoinsAnimationInfo,
-  ItemAnimationInfo,
-  MonsterAnimationInfo,
-  StarsAnimationInfo,
-} from "./boardAnimations";
+import type { ItemAnimationInfo, MonsterAnimationInfo } from "./boardAnimations";
 
 function Board() {
   const gameState = useGameState();
@@ -33,9 +28,6 @@ function Board() {
     [anims],
   );
   const hiddenMonsterIds = useMemo(() => new Set(monAnims.map((info) => info.replaceId)), [anims]);
-
-  const starAnims = anims.filter((info): info is StarsAnimationInfo & { replaceId: number } => info.object === "stars");
-  const coinAnims = anims.filter((info): info is CoinsAnimationInfo & { replaceId: number } => info.object === "coins");
 
   const handleAnimationComplete = useCallback((animId: number) => {
     removeAnim(animId);

@@ -1,5 +1,5 @@
 {
-  "GAMES_URL": "http://192.168.1.158:5001",
-  "LOBBY_URL": "http://192.168.1.158:5000",
+  "GAMES_URL": "/api/game",
+  "LOBBY_URL": "/api/lobby",
   "TIMEOUT": 5000
 }

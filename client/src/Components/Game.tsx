@@ -4,7 +4,6 @@ import { useState, createContext, useContext, useRef, useEffect, type RefObject 
 import { io } from "socket.io-client";
 import * as api from "../api_wrapper.ts";
 import configData from ".././config.json";
-import { useCallback } from "react";
 import { type AnimationInfo, useBoardAnimations } from "./boardAnimations.ts";
 
 export interface GameEvents {

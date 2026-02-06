@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
 import { type MonsterInfo, type PlayerCombatChoice } from "../api_wrapper";
-import { Button, Stack } from "react-bootstrap";
+import { Stack } from "react-bootstrap";
 
 interface Props {
   data: MonsterInfo;

@@ -1,0 +1,33 @@
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+
+  room_manager:
+    build: ./backend
+    command: python -u room_manager.py
+    expose:
+      - "5000"
+    environment:
+      - GAMES_API_URL=http://game_manager:5001
+    volumes:
+      - ./backend/.logs:/app/.logs
+
+  game_manager:
+    build: ./backend
+    command: python -u game_manager.py
+    expose:
+      - "5001"
+    environment:
+      - LOBBY_API_URL=http://room_manager:5000
+    volumes:
+      - ./backend/.logs:/app/.logs
+
+  frontend:
+    build: ./client
+    depends_on:
+      - room_manager
+      - game_manager

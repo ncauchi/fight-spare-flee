@@ -1,6 +1,4 @@
-import eventlet
-eventlet.monkey_patch()
-
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
@@ -20,14 +18,14 @@ CORS(app)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='eventlet'
+    async_mode='threading'
 )
 
 fsf_api = Fsf_api(socketio)
 
 logger = AppLogger(name='game_server', color='blue')
 
-ROOMS_API_URL = "http://127.0.0.1:5000"
+ROOMS_API_URL = games_api_url = os.environ.get("LOBBY_API_URL", "http://localhost:5000")
 SERVER_NAME = "SERVER123"
 
 connections : dict[str, tuple[str, str]] = {} # player_name, game_id
@@ -165,8 +163,7 @@ def JOIN(request_data: JoinRequest, sid):
         message = Message(player_name=SERVER_NAME, text=f'{player_name} joined.')
         fsf_api.emit_chat_event(game_id, message=message, include_self=False)
         fsf_api.emit_players_event(game_id, players_snapshot)
-        eventlet.spawn(update_lobby_service, game_id)
-        eventlet.sleep(0.2)
+        threading.Thread(target=update_lobby_service, args=(game_id)).start()
         fsf_api.emit_init_response(sid, **init_package)
 
         
@@ -203,8 +200,8 @@ def START_GAME(data: StartGameRequest, sid):
             return
     
     logger.info(f'game "{game_snapshot._name}" starting')
-    fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'Starting game...'),include_self=False) 
-    eventlet.spawn(start_game, game_id)
+    fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'Starting game...'),include_self=False)
+    threading.Thread(target=start_game, args=(game_id)).start() 
     
 
 @fsf_api.event_handler(ChatRequest)
@@ -275,8 +272,7 @@ def cleanup_disconnect(sid):
                 game.remove_player(player_name)
             players_snapshot = game.get_status_players()
             game_name = game._name
-
-        eventlet.spawn(update_lobby_service, game_id)
+        threading.Thread(target=update_lobby_service, args=(game_id)).start() 
         fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'{player_name} left.'))
         fsf_api.emit_players_event(game_id, players_snapshot)
         logger.info(f'player "{player_name}" left game "{game_name}"')
@@ -287,7 +283,6 @@ def start_game(game_id):
         game = games[game_id]
         game.start()
         first_player = game.get_active_player()
-    eventlet.sleep(0.1)
     fsf_api.emit_start_game_event(game_id, first_player)
 
 def update_game_players(game_id: str):
@@ -422,5 +417,5 @@ def update_lobby_service(id):
 if __name__ == "__main__":
     #socketio.start_background_task(poll_lobby_service)
     print("Running at: ", get_local_ip())
-    socketio.run(app, debug=True, host="0.0.0.0", port=5001, use_reloader=False)
+    socketio.run(app, debug=True, host="0.0.0.0", port=5001, use_reloader=False, allow_unsafe_werkzeug=True)
     

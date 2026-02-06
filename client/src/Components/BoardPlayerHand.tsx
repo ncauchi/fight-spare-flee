@@ -3,7 +3,6 @@ import ItemCard from "./ItemCard";
 import { useGameState } from "./Game";
 import { usePlayerName } from "./NameContext";
 import type { PlayerInfo } from "../api_wrapper";
-import type { RefObject } from "react";
 
 interface Props {
   selfRef?: React.Ref<HTMLDivElement>;

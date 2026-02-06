@@ -1,15 +1,6 @@
-import { replace } from "react-router-dom";
-import {
-  type Animation,
-  type ItemAnimContent,
-  type ItemInfo,
-  type Location,
-  type MonsterInfo,
-  type SimpleLocation,
-} from "../api_wrapper";
+import { type Animation, type ItemInfo, type Location, type MonsterInfo } from "../api_wrapper";
 import React, { useState, useCallback, useRef } from "react";
 import { type TargetAndTransition, type Transition, type VariantLabels } from "motion";
-import { tr } from "motion/react-m";
 
 export function useBoardAnimations() {
   const [animations, setAnimations] = useState<AnimationInfo[]>([]);
