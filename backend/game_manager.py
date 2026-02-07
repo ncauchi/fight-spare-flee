@@ -1,27 +1,20 @@
 import os
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
+import asyncio
+import socketio
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from gamestate import GameState, Item, Monster
 from game_events import *
-import threading
-import requests
 from test import get_local_ip
 from api_wrapper import *
-import api_wrapper
-import warnings
 from app_logging import AppLogger
 
-app = Flask(__name__)
-CORS(app)
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+fast_app = FastAPI()
+app = socketio.ASGIApp(sio, other_asgi_app=fast_app)
 
-socketio = SocketIO(
-    app,
-    cors_allowed_origins="*",
-    async_mode='threading'
-)
-
-fsf_api = Fsf_api(socketio)
+fsf_api = FsfApi(sio)
 
 logger = AppLogger(name='game_server', color='blue')
 
@@ -30,9 +23,9 @@ SERVER_NAME = "SERVER123"
 
 connections : dict[str, tuple[str, str]] = {} # player_name, game_id
 games : dict[str, GameState] = {}
-game_locks : dict[str, threading.Lock] = {}
-games_lock = threading.Lock()
-connections_lock = threading.Lock()
+game_locks : dict[str, asyncio.Lock] = {}
+games_lock = asyncio.Lock()
+connections_lock = asyncio.Lock()
 
 class GameSnapshot:
     """Captures a snapshot of game state for differential comparison"""
@@ -59,14 +52,14 @@ def differential_update(game_id: str, before: GameSnapshot, after: GameSnapshot)
             changed_players = True
 
     if changed_players:
-        update_game_players(game_id)
+        asyncio.create_task(update_game_players(game_id))
     if before.turn != after.turn or before.turn_phase != after.turn_phase:
-        update_game_turn(game_id)
+        asyncio.create_task(update_game_turn(game_id))
     if before.board != after.board:
-        update_game_board(game_id)
+        asyncio.create_task(update_game_board(game_id))
     for player_name in after.player_hands:
         if (player_name not in before.player_hands) or (before.player_hands[player_name] != after.player_hands[player_name]) or (before.player_selected_items[player_name] != after.player_selected_items[player_name]):
-            update_game_player_hand(game_id, player_name)
+            asyncio.create_task(update_game_player_hand(game_id, player_name))
 
 def with_differential_update(handler_func):
     """
@@ -79,15 +72,15 @@ def with_differential_update(handler_func):
         def HANDLER(data, sid):
             ...
     """
-    def wrapper(data, sid):
-        _, game_id = player_from_sid(sid)
+    async def wrapper(data, sid):
+        _, game_id = await player_from_sid(sid)
 
-        with game_locks[game_id]:
+        async with game_locks[game_id]:
             before = GameSnapshot(games[game_id])
 
-        result = handler_func(data, sid)
+        result = await handler_func(data, sid)
 
-        with game_locks[game_id]:
+        async with game_locks[game_id]:
             after = GameSnapshot(games[game_id])
 
         differential_update(game_id, before, after)
@@ -97,47 +90,46 @@ def with_differential_update(handler_func):
     wrapper.__name__ = handler_func.__name__
     return wrapper
 
-@socketio.on('connect')
-def test_connect(auth):
+@sio.on('connect')
+async def test_connect(sid, environ):
     logger.info("client connected")
 
-@socketio.on('disconnect')
-def test_disconnect():
-    sid = request.sid
-    cleanup_disconnect(sid)
+@sio.on('disconnect')
+async def test_disconnect(sid):
+    await cleanup_disconnect(sid)
     logger.info("client disconnected")
 
 @fsf_api.event_handler(JoinRequest)
-def JOIN(request_data: JoinRequest, sid):
+async def JOIN(request_data: JoinRequest, sid):
     player_name, game_id = request_data.player_name, request_data.game_id
 
     if game_id not in games:
-        disconnect()
+        await sio.disconnect(sid)
         logger.error(f'player: "{player_name}" tried to game that does not exist', console=True)
         return
 
     lock = game_locks[game_id]
     players_snapshot = []
     new_join = True
-    with lock:
+    async with lock:
         game = games[game_id]
 
         # full
         if len(game.players) == game._max_players:
-            disconnect()
+            await sio.disconnect(sid)
             logger.info(f'player: "{player_name}" tried to join full game', console=True)
             return
 
         # player already in game
         if player_name in game.players:
             old_sid = game.players[player_name]
-            disconnect(sid = old_sid)
-            with connections_lock:
+            await sio.disconnect(old_sid)
+            async with connections_lock:
                 if old_sid in connections:
                     del connections[old_sid]
             new_join = False
 
-        with connections_lock:
+        async with connections_lock:
             connections[sid] = (player_name, game_id)
         game.add_player(player_name=player_name, sid=sid)
         players_snapshot = game.get_status_players()
@@ -158,23 +150,23 @@ def JOIN(request_data: JoinRequest, sid):
             logger.info(f'player: "{player_name}" rejoined game "{game._name}"', console=True)
 
 
-    join_room(game_id)
+    await sio.enter_room(sid, game_id)
     if new_join:
         message = Message(player_name=SERVER_NAME, text=f'{player_name} joined.')
         fsf_api.emit_chat_event(game_id, message=message, include_self=False)
         fsf_api.emit_players_event(game_id, players_snapshot)
-        threading.Thread(target=update_lobby_service, args=(game_id)).start()
+        asyncio.create_task(update_lobby_service(game_id))
         fsf_api.emit_init_response(sid, **init_package)
 
         
 
 @fsf_api.event_handler(LobbyReadyRequest)
-def LOBBY_READY(request_data: LobbyReadyRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def LOBBY_READY(request_data: LobbyReadyRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
 
     ready = request_data.ready
     lock = game_locks[game_id]
-    with lock:
+    async with lock:
         player = games[game_id].players[player_name]
         player.lobby_ready = ready
         players_snapshot = games[game_id].get_status_players() 
@@ -183,10 +175,10 @@ def LOBBY_READY(request_data: LobbyReadyRequest, sid):
     fsf_api.emit_players_event(game_id, players_snapshot)
 
 @fsf_api.event_handler(StartGameRequest)
-def START_GAME(data: StartGameRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def START_GAME(data: StartGameRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
 
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game_snapshot = games[game_id]
     
         if game_snapshot._owner != player_name:
@@ -201,12 +193,12 @@ def START_GAME(data: StartGameRequest, sid):
     
     logger.info(f'game "{game_snapshot._name}" starting')
     fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'Starting game...'),include_self=False)
-    threading.Thread(target=start_game, args=(game_id)).start() 
+    asyncio.create_task(start_game(game_id))
     
 
 @fsf_api.event_handler(ChatRequest)
-def CHAT(data: ChatRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def CHAT(data: ChatRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
     fsf_api.emit_chat_event(game_id, Message(player_name=player_name, text=data.text))
     logger.info(f'player "{player_name}" sent a message "{data.text}"')
 
@@ -214,50 +206,50 @@ def CHAT(data: ChatRequest, sid):
 
 @fsf_api.event_handler(ActionRequest)
 @with_differential_update
-def ACTION(data: ActionRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def ACTION(data: ActionRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
     logger.info(f'recieved action request from game {player_name}')
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         game.player_action(player=player_name, action=data.choice)
 
 
 @fsf_api.event_handler(CombatRequest)
 @with_differential_update
-def COMBAT(data: CombatRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def COMBAT(data: CombatRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
     logger.info(f'recieved combat action from game {player_name}: {data}')
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         game.player_select_monster(player=player_name, choice=data.target, combat_action=data.combat)
 
 
 @fsf_api.event_handler(ItemChoiceRequest)
 @with_differential_update
-def ITEM_CHOICE(data: ItemChoiceRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def ITEM_CHOICE(data: ItemChoiceRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
     logger.info(f'recieved item selection from game {player_name}: {data}')
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         game.player_select_item(player=player_name, choice=data.item)
 
 
 @fsf_api.event_handler(PlayerChoiceRequest)
 @with_differential_update
-def PLAYER_CHOICE(data: PlayerChoiceRequest, sid):
-    player_name, game_id = player_from_sid(sid)
+async def PLAYER_CHOICE(data: PlayerChoiceRequest, sid):
+    player_name, game_id = await player_from_sid(sid)
     logger.info(f'recieved player selection from game {player_name}')
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         game.player_select_player(player=player_name, choice=data.player)
     
 
-def cleanup_disconnect(sid):
+async def cleanup_disconnect(sid):
     player_leave = False
     player_name, game_id = "LOCK_WARNING", "LOCK_WARNING"
     players_snapshot = []
     
-    with connections_lock:
+    async with connections_lock:
         if sid in connections:
             player_name, game_id = connections[sid]
             del connections[sid]
@@ -266,27 +258,27 @@ def cleanup_disconnect(sid):
             player_leave = False
     
     if player_leave and game_id in games:
-        with game_locks[game_id]:
+        async with game_locks[game_id]:
             game = games[game_id]
             if player_name in game.players:
                 game.remove_player(player_name)
             players_snapshot = game.get_status_players()
             game_name = game._name
-        threading.Thread(target=update_lobby_service, args=(game_id)).start() 
+        asyncio.create_task(update_lobby_service(game_id))
         fsf_api.emit_chat_event(game_id, Message(player_name=SERVER_NAME, text=f'{player_name} left.'))
         fsf_api.emit_players_event(game_id, players_snapshot)
         logger.info(f'player "{player_name}" left game "{game_name}"')
 
 
-def start_game(game_id):
-    with game_locks[game_id]:
+async def start_game(game_id):
+    async with game_locks[game_id]:
         game = games[game_id]
         game.start()
         first_player = game.get_active_player()
     fsf_api.emit_start_game_event(game_id, first_player)
 
-def update_game_players(game_id: str):
-    with game_locks[game_id]:
+async def update_game_players(game_id: str):
+    async with game_locks[game_id]:
         game = games[game_id]
         game_name = game._name
         player_snapshot = game.get_status_players()
@@ -294,8 +286,8 @@ def update_game_players(game_id: str):
     fsf_api.emit_players_event(game_id, players=player_snapshot)
     logger.info(f'updating players in game {game_name}, {player_snapshot}')
 
-def update_game_board(game_id: str):
-    with game_locks[game_id]:
+async def update_game_board(game_id: str):
+    async with game_locks[game_id]:
         game = games[game_id]
         game_name = game._name
         board_snapshot = game.get_status_board()
@@ -303,8 +295,8 @@ def update_game_board(game_id: str):
     fsf_api.emit_board_event(game_id, **board_snapshot)
     logger.info(f'updating board in game {game_name}, {board_snapshot}')
 
-def update_game_player_hand(game_id: str, player: str):
-    with game_locks[game_id]:
+async def update_game_player_hand(game_id: str, player: str):
+    async with game_locks[game_id]:
         game = games[game_id]
         game_name = game._name
         player_sid = game.players[player].sid
@@ -315,8 +307,8 @@ def update_game_player_hand(game_id: str, player: str):
     fsf_api.emit_hand_event(player_sid, hand_snapshot, selected_items)
     logger.info(f'updating {player}\'s hand in game {game_name}, {hand_snapshot}, {selected_items}')
 
-def update_game_turn(game_id: str):
-    with game_locks[game_id]:
+async def update_game_turn(game_id: str):
+    async with game_locks[game_id]:
         game = games[game_id]
         game_name = game._name
         active = game.get_active_player()
@@ -325,19 +317,19 @@ def update_game_turn(game_id: str):
     fsf_api.emit_turn_event(game_id, active=active, phase=phase)
     logger.info(f'updating turn info in game {game_name}, {active} {phase}')
 
-def on_coins_event(event: CoinsEvent):
+async def on_coins_event(event: CoinsEvent):
     logger.info("sending coins animation")
     game_id = event.game_id
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         player_sid = game.players[event.player].sid
     anim = Animation(content=CoinAnimContent(), source="coins", destination="player")
     fsf_api.emit_anim_event(to=player_sid, animation=anim)
 
-def on_shop_event(event: ShopEvent):
+async def on_shop_event(event: ShopEvent):
     logger.info("sending item shop animation")
     game_id = event.game_id
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         game = games[game_id]
         destination_id = event.item_uid
         player_sid = game.players[event.player_name].sid
@@ -345,7 +337,7 @@ def on_shop_event(event: ShopEvent):
     anim = Animation(content=ItemAnimContent(item=item_info, style="draw"), source="shop", destination=HandLocation(id=destination_id))
     fsf_api.emit_anim_event(to=player_sid, animation=anim)
 
-def on_combat_event(event: CombatEvent):
+async def on_combat_event(event: CombatEvent):
     logger.info("sending combat start animation")
     game_id = event.game_id
     mon_infos = [m for m in event.info]
@@ -354,60 +346,61 @@ def on_combat_event(event: CombatEvent):
         fsf_api.emit_anim_event(to=game_id, animation=anim)
 
 
-@app.route("/internal/<game_id>", methods = ["POST"])
-def create_game(game_id):
+# REST Api Endpoints
+class CreateGameRequest(BaseModel):
+    name: str
+    owner: str
+    max_players: int
 
-    data = request.get_json()
+@fast_app.post("/internal/{game_id}", status_code=201)
+async def create_game(game_id, data: CreateGameRequest):
 
-    if not data or "name" not in data or "owner" not in data or "max_players" not in data:
-        return jsonify({"error": "no data"}), 400
-
-    new_game = GameState(game_id, data["name"], data["owner"], data["max_players"])
+    new_game = GameState(game_id, data.name, data.owner, data.max_players)
 
     new_game._event_bus.subscribe(event_type="shop", callback=on_shop_event)
     new_game._event_bus.subscribe(event_type="coins", callback=on_coins_event)
     new_game._event_bus.subscribe(event_type="combat", callback=on_combat_event)
 
-    with games_lock:
+    async with games_lock:
         games[game_id] = new_game
-        game_locks[game_id] = threading.Lock()
+        game_locks[game_id] = asyncio.Lock()
 
     logger.info(f'"{new_game._owner}" created game: "{new_game._name}" with id: "{new_game._id}"')
-    return jsonify("response", "Sucess"), 201
+    return {"response": "Success"}
 
-def player_from_sid(sid: Any):
-    with connections_lock:
+async def player_from_sid(sid: Any):
+    async with connections_lock:
         if sid not in connections:
             logger.warning("tried to decode invalid sid")
             return
         player_name, game_id = connections[sid]
 
-    with games_lock:
+    async with games_lock:
         if game_id not in games:
             raise IndexError("Game associated with sid does not exist or was deleted")
         
-    with game_locks[game_id]:
+    async with game_locks[game_id]:
         if player_name not in games[game_id].players:
             raise IndexError("Player name associated with sid does not exist or was deleted")
 
     return player_name, game_id
 
-def update_lobby_service(id):
+async def update_lobby_service(id):
 
     if id not in game_locks or id not in games:
         logger.error("tried to send update to lobby for game that does not exist", console=True)
         return
 
-    lock = game_locks[id]
-
-    with lock:
+    async with game_locks[id]:
         status = games[id].get_status_lobby()
         name = games[id]._name
-    response = requests.put(
+
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
             f"{ROOMS_API_URL}/games/{id}",
             json=status,
-            headers={"Content-Type": "application/json"},
         )
+
     if response.status_code != 200:
         logger.error(f'failed to update game "{name}": {response.status_code}')
     else:
@@ -417,5 +410,6 @@ def update_lobby_service(id):
 if __name__ == "__main__":
     #socketio.start_background_task(poll_lobby_service)
     print("Running at: ", get_local_ip())
-    socketio.run(app, debug=True, host="0.0.0.0", port=5001, use_reloader=False, allow_unsafe_werkzeug=True)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)
     

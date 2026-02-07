@@ -66,7 +66,7 @@ class AppLogger:
         if AppLogger._log_file_setup:
             return
 
-        log_dir = Path(__file__).parent.parent / '.logs'
+        log_dir = Path(__file__).parent / '.logs'
         log_dir.mkdir(exist_ok=True)
 
         log_file = log_dir / 'log.txt'
@@ -109,19 +109,19 @@ class AppLogger:
         if console and self._console_handler in self._logger.handlers:
             self._logger.removeHandler(self._console_handler)
 
-    def debug(self, message, console=False):
+    def debug(self, message, console=True):
         self._log_with_console('debug', message, console)
 
-    def info(self, message, console=False):
+    def info(self, message, console=True):
         self._log_with_console('info', message, console)
 
-    def warning(self, message, console=False):
+    def warning(self, message, console=True):
         self._log_with_console('warning', message, console)
 
-    def error(self, message, console=False):
+    def error(self, message, console=True):
         self._log_with_console('error', message, console)
 
-    def critical(self, message, console=False):
+    def critical(self, message, console=True):
         self._log_with_console('critical', message, console)
 
 

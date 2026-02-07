@@ -3,7 +3,6 @@ import { usePlayerName } from "./NameContext";
 import { useState, createContext, useContext, useRef, useEffect, type RefObject } from "react";
 import { io } from "socket.io-client";
 import * as api from "../api_wrapper.ts";
-import configData from ".././config.json";
 import { type AnimationInfo, useBoardAnimations } from "./boardAnimations.ts";
 
 export interface GameEvents {
@@ -70,7 +69,7 @@ function Game() {
   const { animations, onAnimationEvent, removeAnimation, registerRef } = useBoardAnimations();
 
   useEffect(() => {
-    const socket = io(configData.GAMES_URL, { transports: ["websocket", "polling"] });
+    const socket = io({ transports: ["websocket", "polling"] });
     apiRef.current = new api.GameAPI(socket);
 
     const cleanup: (() => void)[] = [];

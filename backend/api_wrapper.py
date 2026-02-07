@@ -1,8 +1,8 @@
 from enum import Enum
 from typing import List, Optional, Dict, Any, Literal, Union
-from flask_socketio import SocketIO, join_room, leave_room, emit, disconnect
 from pydantic import BaseModel, field_validator
-
+import socketio as sio_lib
+import asyncio
 
 # Enums
 
@@ -149,31 +149,16 @@ class Animation(BaseModel):
     source: Location
     destination:  Optional[Location]
 
-class Fsf_api():
-    def __init__(self, server: SocketIO):
+class FsfApi():
+    def __init__(self, server: sio_lib.AsyncServer):
         self.server = server
+        
 
     def event_handler(self, request_model=None):
-        """
-        Decorator to register SocketIO event handlers with automatic request parsing.
-
-        Usage:
-            @api.event_handler(JoinRequest)
-            def JOIN(request_data, sid):
-                player_name = request_data.player_name
-                game_id = request_data.game_id
-                ...your logic here
-
-        Args:
-            request_model: Pydantic model class for parsing incoming data
-        """
-        def decorator(handler_func):  # Level 2: Takes the function being decorated
-            from flask import request
+        def decorator(handler_func):
             event_name = handler_func.__name__
 
-            def wrapper(data):  # Level 3: Called when event fires
-                sid = request.sid
-
+            async def wrapper(sid, data=None):
                 if request_model:
                     try:
                         request_data = request_model(**data) if data else request_model()
@@ -182,14 +167,12 @@ class Fsf_api():
                         return
                 else:
                     request_data = data
-
-                return handler_func(request_data, sid)
+                return await handler_func(request_data, sid)
 
             wrapper.__name__ = event_name
-            self.server.on_event(event_name, wrapper)
+            self.server.on(event_name, wrapper)
             return wrapper
-
-        return decorator  # Level 1: Returns the decorator
+        return decorator
 
     def emit_init_response(self, to: str, game_name: str, game_owner: str, max_players: int, players: List[PlayerInfo], messages: List[Message], status: GameStatus, active_player: Optional[str] = None):
         """Emit INIT event to initialize game state for a joining player."""
@@ -202,38 +185,38 @@ class Fsf_api():
             "status": status,
             "active_player": active_player,
         }
-        self.server.emit("INIT", init_data, to=to)
+        asyncio.create_task(self.server.emit("INIT", init_data, to=to))
 
 
     def emit_start_game_event(self, to: str, first_player: str):
         """Emit START_GAME event to signal game start."""
-        self.server.emit("START_GAME", first_player, to=to)
+        asyncio.create_task(self.server.emit("START_GAME", first_player, to=to))
 
     def emit_players_event(self, to: str, players: List[PlayerInfo], include_self: bool = True):
         """Emit PLAYERS event to broadcast updated player information."""
         event_data = [player.model_dump(mode='json') for player in players]
-        self.server.emit("PLAYERS", event_data, to=to, include_self=include_self)
+        asyncio.create_task(self.server.emit("PLAYERS", event_data, to=to, skip_sid=None))
 
     def emit_chat_event(self, to: str, message: Message, include_self: bool = True):
         """Emit CHAT event to broadcast a chat message."""
-        self.server.emit("CHAT", message.model_dump(mode='json'), to=to, include_self=include_self)
+        asyncio.create_task(self.server.emit("CHAT", message.model_dump(mode='json'), to=to, skip_sid=None))
 
     def emit_turn_event(self, to: str, active: str, phase: TurnPhase):
         """Emit CHANGE_TURN event to signal active player change."""
-        self.server.emit("CHANGE_TURN", {"active": active, "phase": phase.name}, to=to)
+        asyncio.create_task(self.server.emit("CHANGE_TURN", {"active": active, "phase": phase.name}, to=to))
 
     def emit_board_event(self, to: str, deck_size: int, shop_size: int, monsters : List[MonsterInfo] = [], selected_monster: int = None, items : list[ItemInfo] = []):
         item_i = [item.model_dump(mode='json') for item in items] if items else []
         mon_i = [mon.model_dump(mode='json') for mon in monsters] if monsters else []
-        self.server.emit("BOARD", {"deck_size": deck_size, "shop_size": shop_size, "monsters": mon_i, "selected_monster": selected_monster, "items": item_i}, to=to)
+        asyncio.create_task(self.server.emit("BOARD", {"deck_size": deck_size, "shop_size": shop_size, "monsters": mon_i, "selected_monster": selected_monster, "items": item_i}, to=to))
 
     def emit_hand_event(self, to: str, items: List[ItemInfo], selected_items: List[bool] = None):
         item_i = [item.model_dump(mode='json') for item in items] if items else []
         
-        self.server.emit("ITEMS", {"items": item_i, "selected_items": selected_items}, to=to)
+        asyncio.create_task(self.server.emit("ITEMS", {"items": item_i, "selected_items": selected_items}, to=to))
 
 
     #Animation/Cosmetic events
 
     def emit_anim_event(self, to: str, animation: Animation):     
-        self.server.emit("ANIMATION", animation.model_dump(mode='json'), to=to)
+        asyncio.create_task(self.server.emit("ANIMATION", animation.model_dump(mode='json'), to=to))
