@@ -9,16 +9,28 @@ from game_events import *
 from test import get_local_ip
 from api_wrapper import *
 from app_logging import AppLogger
+from db_utils import init_db, teardown_db
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    print("Database initialized")
+    yield
+    await teardown_db()
+    print("Database connections closed")
+
 
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
-fast_app = FastAPI()
+fast_app = FastAPI(lifespan=lifespan)
 app = socketio.ASGIApp(sio, other_asgi_app=fast_app)
 
 fsf_api = FsfApi(sio)
 
 logger = AppLogger(name='game_server', color='blue')
 
-ROOMS_API_URL = games_api_url = os.environ.get("LOBBY_API_URL", "http://localhost:5000")
+ROOMS_API_URL = os.environ.get("LOBBY_API_URL", "http://localhost:5000")
 SERVER_NAME = "SERVER123"
 
 connections : dict[str, tuple[str, str]] = {} # player_name, game_id

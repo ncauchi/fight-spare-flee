@@ -1,10 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ${DB_FOLDER}:/var/lib/postgresql/data
+    expose:
+      - "5432"
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - postgres
 
   room_manager:
     build: ./backend
@@ -12,9 +24,13 @@ services:
     expose:
       - "5000"
     environment:
-      - GAMES_API_URL=http://game_manager:5001
+      - GAMES_API_URL=${GAMES_API_URL}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - ./backend/.logs:/app/.logs
+    depends_on:
+      - postgres
 
   game_manager:
     build: ./backend
@@ -22,9 +38,13 @@ services:
     expose:
       - "5001"
     environment:
-      - LOBBY_API_URL=http://room_manager:5000
+      - LOBBY_API_URL=${LOBBY_API_URL}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - ./backend/.logs:/app/.logs
+    depends_on:
+      - postgres
 
   frontend:
     build: ./client

@@ -5,9 +5,13 @@ htmlcov/
 .coverage
 .pytest_cache/
 .mypy_cache/
+.claude/
 
 # Environment variables
 .env
 .venv/
 .vscode/
 .logs/
+
+#Database
+.pgdata/

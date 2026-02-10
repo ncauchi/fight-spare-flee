@@ -697,7 +697,7 @@ class GameState:
             self._logger.warning(f'player {player} tried to take action out of turn')
             return
 
-        valid_states : dict[api_wrapper.TurnPhase, Callable[Any]]= {
+        valid_states = {
             api_wrapper.TurnPhase.CHOOSING_ACTION: self._state_choosing_action,
             api_wrapper.TurnPhase.SHOPPING: self._state_shopping,
             api_wrapper.TurnPhase.FLED: self._state_fled,
