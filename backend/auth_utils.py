@@ -5,7 +5,8 @@ import os
 SECRET_KEY = os.environ["JWT_SECRET"]
 ALGORITHM = "HS256"
 
-def create_access_token(data: dict, expires_delta: datetime.timedelta):
+def create_access_token(data: dict, valid_for_hours: float):
+    expires_delta = datetime.timedelta(hours=valid_for_hours)
     to_encode = data.copy()
     expire = datetime.datetime.now(tz=datetime.timezone.utc) + expires_delta
     to_encode.update({"exp": expire})
